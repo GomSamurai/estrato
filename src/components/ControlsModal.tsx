@@ -369,9 +369,10 @@ export const ControlsModal: React.FC<ControlsModalProps> = ({
                   </div>
                   <div className="font-display text-xl font-bold text-white">100% Gestos Directos</div>
                   <p className="text-xs text-[#D4D4D8] leading-relaxed">
-                    Sin barra inferior: el pozo ocupa toda la pantalla. Toca o arrastra bloques cercanos para picar o
-                    permutar; mantén tocado a izquierda/derecha del pozo para moverte; desliza rápido a los lados (o doble
-                    tap) para hacer Dash, arriba para Freno Aéreo y abajo en caída para Slam.
+                    Sin barra inferior: el pozo ocupa toda la pantalla. Desliza el dedo hacia izquierda o derecha y
+                    suelta para moverte 1 casilla (desde cualquier punto de la pantalla); doble tap rápido en la mitad
+                    izquierda o derecha para Avance Rápido (Dash); tap en bloque para picar, arrastrar bloque para
+                    permutar, abajo en caída para Slam y arriba para Freno Aéreo.
                   </p>
                 </button>
 

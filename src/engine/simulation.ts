@@ -3240,6 +3240,89 @@ export class EstratoSimulation {
     return drilled;
   }
 
+  public triggerStepMove(dir: -1 | 1, allowClimb = true): boolean {
+    if (this.finished || this.pendingStory || this.isClimbing) return false;
+    this.facing = dir;
+    const phasesIgniting = this.getChassisDef().phasesThroughIgniting;
+    const isColPassable = (rowIdx: number, colIdx: number): boolean => {
+      if (colIdx < 0 || colIdx >= GRID_COLS || rowIdx < 0) return false;
+      return isPassableForPlayer(this.getCell(rowIdx, colIdx), phasesIgniting);
+    };
+
+    const nextCol = this.targetCol + dir;
+    if (nextCol < 0 || nextCol >= GRID_COLS) return false;
+
+    if (this.playerState === 'falling') {
+      const checkTopRow = Math.max(0, Math.floor(this.py - 0.85));
+      const checkBotRow = Math.max(0, Math.floor(this.py - 0.05));
+      if (isColPassable(checkTopRow, nextCol) && isColPassable(checkBotRow, nextCol)) {
+        this.targetCol = nextCol;
+        this.gridCol = nextCol;
+        return true;
+      }
+      return false;
+    }
+
+    if (isColPassable(this.targetRow, nextCol)) {
+      this.targetCol = nextCol;
+      this.gridCol = nextCol;
+      this.playerState = 'moving';
+      this.lateralHoldFrames = 0;
+      this.aimDir = 'DOWN';
+      soundEngine.playStep();
+      this.checkImmediatePlayerFall();
+      return true;
+    }
+
+    if (this.canClimbStep(dir, allowClimb)) {
+      this.isClimbing = true;
+      this.targetCol = nextCol;
+      this.targetRow -= 1;
+      this.gridCol = this.targetCol;
+      this.gridRow = this.targetRow;
+      this.playerState = 'moving';
+      this.lateralHoldFrames = 0;
+      this.aimDir = 'DOWN';
+      this.squashX = 0.82;
+      this.squashY = 1.24;
+      this.spawnParticles(nextCol + 0.5, this.targetRow + 1, '#A1A1AA', 5);
+      soundEngine.playClimb();
+      return true;
+    }
+
+    this.aimDir = dir < 0 ? 'LEFT' : 'RIGHT';
+    return false;
+  }
+
+  public triggerDirectionalDash(dir: -1 | 1): boolean {
+    if (this.finished || this.pendingStory || this.isClimbing) return false;
+    this.facing = dir;
+    const dashed = this.tryPlayerDash(
+      {
+        left: dir < 0,
+        right: dir > 0,
+        up: false,
+        down: false,
+        drillPressed: false,
+        swapLeftPressed: false,
+        swapRightPressed: false,
+        slamHeld: false,
+        detonatePressed: false,
+        rerollPressed: false,
+        dashPressed: true,
+        overdrivePressed: false,
+      },
+      dir
+    );
+    if (dashed) {
+      this.lastMoveInputDir = 0;
+      this.dasHoldFrames = 0;
+      this.dasRepeatCounter = 0;
+      this.checkImmediatePlayerFall();
+    }
+    return dashed;
+  }
+
   private getAimOffset(): [number, number] {
     switch (this.aimDir) {
       case 'UP':

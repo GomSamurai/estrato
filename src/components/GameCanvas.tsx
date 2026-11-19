@@ -1030,7 +1030,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const hit = getCellFromPointer(touch.clientX, touch.clientY);
     const rect = canvas.getBoundingClientRect();
-    const side: -1 | 1 = hit ? (hit.c < sim.gridCol ? -1 : 1) : touch.clientX - rect.left < rect.width * 0.5 ? -1 : 1;
+    const screenSide: -1 | 1 = touch.clientX - rect.left < rect.width * 0.5 ? -1 : 1;
 
     if (hit && sim.getCell(hit.r, hit.c).state === 'IGNITING') {
       sim.triggerForceDetonate();
@@ -1043,7 +1043,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         anchorR: hit.r,
         anchorC: hit.c,
         cellSize: hit.cellSize,
-        side,
+        side: screenSide,
         fired: true,
         airBrakeFired: false,
         dashFlicked: false,
@@ -1053,8 +1053,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       return;
     }
 
+    const hitCell = hit ? sim.getCell(hit.r, hit.c) : null;
+    const isCoyoteOverhead = Boolean(
+      hit && sim.coyoteCrushTimer > 0 && hit.r === Math.max(0, sim.gridRow) - 1 && hit.c === sim.gridCol
+    );
     const isAdjacentBlock =
       hit &&
+      hitCell &&
+      (hitCell.state !== 'EMPTY' || isCoyoteOverhead) &&
       (sim.getDirectionalSwapTarget(hit.r, hit.c, 1, 0) ||
         sim.getDirectionalSwapTarget(hit.r, hit.c, -1, 0) ||
         sim.getDirectionalSwapTarget(hit.r, hit.c, 0, -1) ||
@@ -1070,7 +1076,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         anchorR: hit.r,
         anchorC: hit.c,
         cellSize: hit.cellSize,
-        side,
+        side: screenSide,
         fired: false,
         airBrakeFired: false,
         dashFlicked: false,
@@ -1080,19 +1086,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       return;
     }
 
-    // Free zone (outside adjacent blocks)
+    // Free zone (or empty space): never move on single touch; rapid double-tap on left/right half triggers Dash
     const now = performance.now();
-    let doubleTapped = false;
-    if (touchModeRef.current === 'GESTURES') {
-      if (now - lastFreeTapRef.current.time < 260 && lastFreeTapRef.current.side === side) {
-        touchInputRef.current.left = side < 0;
-        touchInputRef.current.right = side > 0;
-        edgeQueue.current.dash = true;
-        doubleTapped = true;
-      } else {
-        touchInputRef.current.left = side < 0;
-        touchInputRef.current.right = side > 0;
-      }
+    if (
+      touchModeRef.current === 'GESTURES' &&
+      now - lastFreeTapRef.current.time < 320 &&
+      lastFreeTapRef.current.side === screenSide
+    ) {
+      sim.triggerDirectionalDash(screenSide);
+      lastFreeTapRef.current = { time: 0, side: 1 };
+      canvasTouchRef.current = {
+        id: touch.identifier,
+        mode: 'DONE',
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startTime: now,
+        anchorR: hit?.r ?? Math.max(0, sim.gridRow + 1),
+        anchorC: hit?.c ?? sim.gridCol,
+        cellSize: hit?.cellSize ?? (24 / 256) * rect.width * sim.camZoom,
+        side: screenSide,
+        fired: true,
+        airBrakeFired: false,
+        dashFlicked: true,
+        downDrillAnchorY: touch.clientY,
+        downDrillCount: 0,
+      };
+      return;
     }
 
     canvasTouchRef.current = {
@@ -1104,10 +1123,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       anchorR: hit?.r ?? Math.max(0, sim.gridRow + 1),
       anchorC: hit?.c ?? sim.gridCol,
       cellSize: hit?.cellSize ?? (24 / 256) * rect.width * sim.camZoom,
-      side,
+      side: screenSide,
       fired: false,
       airBrakeFired: false,
-      dashFlicked: doubleTapped,
+      dashFlicked: false,
       downDrillAnchorY: touch.clientY,
       downDrillCount: 0,
     };
@@ -1167,8 +1186,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
     } else if (g.mode === 'FREE') {
       if (sim.playerState === 'falling') {
-        if (dy >= 24) touchInputRef.current.slam = true;
-        if (dy <= -28 && !g.airBrakeFired) {
+        if (dy >= 24 && dy > Math.abs(dx) * 1.25) touchInputRef.current.slam = true;
+        if (dy <= -28 && Math.abs(dy) > Math.abs(dx) * 1.25 && !g.airBrakeFired) {
           edgeQueue.current.dash = true;
           g.airBrakeFired = true;
         }
@@ -1182,20 +1201,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         g.downDrillAnchorY = touch.clientY;
         g.downDrillCount = 1;
         return;
-      }
-      if (touchModeRef.current === 'GESTURES') {
-        touchInputRef.current.up = dy <= -24;
-        if (Math.abs(dx) >= 14) {
-          touchInputRef.current.left = dx < 0;
-          touchInputRef.current.right = dx > 0;
-        }
-        const elapsed = performance.now() - g.startTime;
-        if (Math.abs(dx) >= 48 && elapsed < 185 && !g.dashFlicked) {
-          touchInputRef.current.left = dx < 0;
-          touchInputRef.current.right = dx > 0;
-          edgeQueue.current.dash = true;
-          g.dashFlicked = true;
-        }
       }
     }
   };
@@ -1220,9 +1225,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       } else {
         sim.handleCellTap(g.anchorR, g.anchorC);
       }
-    } else if (g.mode === 'FREE' && touchModeRef.current === 'GESTURES' && !g.dashFlicked) {
-      const elapsed = performance.now() - g.startTime;
-      if (dist < 14 && elapsed < 220) {
+    } else if (
+      g.mode === 'FREE' &&
+      touchModeRef.current === 'GESTURES' &&
+      !g.dashFlicked &&
+      sim &&
+      !pausedRef.current &&
+      !sim.finished
+    ) {
+      const swipeStepPx = Math.max(22, Math.round(g.cellSize * 0.45));
+      if (Math.abs(dx) >= swipeStepPx && Math.abs(dx) > Math.abs(dy) * 1.1) {
+        const moveDir: -1 | 1 = dx > 0 ? 1 : -1;
+        sim.triggerStepMove(moveDir, true);
+        lastFreeTapRef.current = { time: 0, side: 1 };
+      } else if (dy <= -swipeStepPx && Math.abs(dy) > Math.abs(dx) * 1.25 && !g.airBrakeFired && sim.playerState !== 'falling') {
+        if (sim.canClimbStep(sim.facing, true)) {
+          sim.triggerStepMove(sim.facing, true);
+        } else {
+          sim.aimDir = 'UP';
+        }
+        lastFreeTapRef.current = { time: 0, side: 1 };
+      } else if (dist < 16 && performance.now() - g.startTime < 280) {
         lastFreeTapRef.current = { time: performance.now(), side: g.side };
       }
     }
@@ -2646,8 +2669,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             </div>
           ) : (
             <div className="lg:hidden w-full max-w-[520px] pt-1.5 text-center font-mono text-[10px] text-[#71717A] shrink-0">
-              TAP: Picar · Arrastrar bloque: Permutar
-              {visualSettings.swipeDownDrill !== false ? ' · ↓ Arrastrar: Picar abajo' : ''} · Lados: Mover · Flick: Dash/Freno/Slam
+              TAP bloque: Picar · Arrastrar bloque: Permutar · Deslizar ◀/▶ y soltar: Mover 1 casilla · Doble tap izq/der: Dash
+              {visualSettings.swipeDownDrill !== false ? ' · ↓ Arrastrar: Picar abajo' : ''}
             </div>
           )}
         </div>
