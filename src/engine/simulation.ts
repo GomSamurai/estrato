@@ -2280,23 +2280,34 @@ export class EstratoSimulation {
     };
 
     // 0. Safety Ejection if a falling/swapping block overlapped the player's body cell
-    const bodyRow = Math.floor(this.py - 0.45);
-    const clampedCol = Math.max(0, Math.min(GRID_COLS - 1, this.targetCol));
-    if (bodyRow >= 0 && !isPassableForPlayer(this.getCell(bodyRow, clampedCol), phasesIgniting)) {
-      if (isColPassable(bodyRow, clampedCol - 1)) {
-        this.targetCol = clampedCol - 1;
-        this.gridCol = this.targetCol;
-        this.px = this.targetCol;
-      } else if (isColPassable(bodyRow, clampedCol + 1)) {
-        this.targetCol = clampedCol + 1;
-        this.gridCol = this.targetCol;
-        this.px = this.targetCol;
-      } else if (bodyRow > 0 && isPassableForPlayer(this.getCell(bodyRow - 1, clampedCol), phasesIgniting)) {
-        this.py = bodyRow;
-        this.gridRow = bodyRow - 1;
-        this.targetRow = this.gridRow;
-        this.vy = 0;
+    // Skip ejection against the ledge beneath while mid-climb; only cancel if destination cell itself gets blocked.
+    if (!this.isClimbing) {
+      const bodyRow = Math.floor(this.py - 0.45);
+      const clampedCol = Math.max(0, Math.min(GRID_COLS - 1, this.targetCol));
+      if (bodyRow >= 0 && !isPassableForPlayer(this.getCell(bodyRow, clampedCol), phasesIgniting)) {
+        if (isColPassable(bodyRow, clampedCol - 1)) {
+          this.targetCol = clampedCol - 1;
+          this.gridCol = this.targetCol;
+          this.px = this.targetCol;
+        } else if (isColPassable(bodyRow, clampedCol + 1)) {
+          this.targetCol = clampedCol + 1;
+          this.gridCol = this.targetCol;
+          this.px = this.targetCol;
+        } else if (bodyRow > 0 && isPassableForPlayer(this.getCell(bodyRow - 1, clampedCol), phasesIgniting)) {
+          this.py = bodyRow;
+          this.gridRow = bodyRow - 1;
+          this.targetRow = this.gridRow;
+          this.vy = 0;
+        }
       }
+    } else if (this.targetRow >= 0 && !isPassableForPlayer(this.getCell(this.targetRow, this.targetCol), phasesIgniting)) {
+      this.isClimbing = false;
+      const fallbackCol = Math.max(0, Math.min(GRID_COLS - 1, Math.round(this.px)));
+      this.targetCol = fallbackCol;
+      this.gridCol = fallbackCol;
+      this.px = fallbackCol;
+      this.targetRow = Math.max(0, Math.floor(this.py - 0.45));
+      this.gridRow = this.targetRow;
     }
 
     // 1. Immediate 'falling' State Check (never interrupt a 1-block climb vault!)
@@ -2800,23 +2811,25 @@ export class EstratoSimulation {
       const prevPx = this.px;
       const speedLerp = 1 - Math.exp(-16 * DT * moveMult);
       const climbRiseLerp = 1 - Math.exp(-26 * DT * moveMult);
+      const climbSlideLerp = 1 - Math.exp(-22 * DT * moveMult);
 
       const targetPy = this.targetRow + 1;
       if (this.isClimbing) {
         // Rise vertically slightly ahead of horizontal step so sprite clears the 1-block corner cleanly
         this.py += (targetPy - this.py) * climbRiseLerp;
-        if (Math.abs(this.py - targetPy) < 0.42) {
-          this.px += (this.targetCol - this.px) * speedLerp;
+        if (Math.abs(this.py - targetPy) < 0.65) {
+          this.px += (this.targetCol - this.px) * climbSlideLerp;
         }
       } else {
         this.px += (this.targetCol - this.px) * speedLerp;
         this.py += (targetPy - this.py) * speedLerp;
       }
 
-      if (Math.abs(this.targetCol - this.px) < 0.008) {
+      const snapThresh = this.isClimbing ? 0.02 : 0.008;
+      if (Math.abs(this.targetCol - this.px) < snapThresh) {
         this.px = this.targetCol;
       }
-      if (Math.abs(targetPy - this.py) < 0.008) {
+      if (Math.abs(targetPy - this.py) < snapThresh) {
         this.py = targetPy;
       }
 
@@ -3241,7 +3254,18 @@ export class EstratoSimulation {
   }
 
   public triggerStepMove(dir: -1 | 1, allowClimb = true): boolean {
-    if (this.finished || this.pendingStory || this.isClimbing) return false;
+    if (this.finished || this.pendingStory) return false;
+    if (this.isClimbing) {
+      if (Math.abs(this.py - (this.targetRow + 1)) <= 0.35 && Math.abs(this.px - this.targetCol) <= 0.35) {
+        this.px = this.targetCol;
+        this.py = this.targetRow + 1;
+        this.gridCol = this.targetCol;
+        this.gridRow = this.targetRow;
+        this.isClimbing = false;
+      } else {
+        return false;
+      }
+    }
     this.facing = dir;
     const phasesIgniting = this.getChassisDef().phasesThroughIgniting;
     const isColPassable = (rowIdx: number, colIdx: number): boolean => {
@@ -3275,6 +3299,8 @@ export class EstratoSimulation {
     }
 
     if (this.canClimbStep(dir, allowClimb)) {
+      this.px = this.targetCol;
+      this.py = this.targetRow + 1;
       this.isClimbing = true;
       this.targetCol = nextCol;
       this.targetRow -= 1;
