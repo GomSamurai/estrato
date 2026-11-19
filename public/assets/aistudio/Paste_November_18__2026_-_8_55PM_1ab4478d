@@ -1,0 +1,671 @@
+DOCUMENTO DE DISEÑO DE JUEGO (GDD v1.1) — ESTRATO (Título de trabajo)
+
+Género: Arcade / Roguelite de Acción Cinética y Puzle en Tiempo Real
+
+Pilares de diseño: Velocidad quirúrgica (Tetris Attack) + Combustión encadenada
+y castigo térmico (Meteos) + Peligro físico, descenso vertical y presión de
+oxígeno (Mr. Driller)
+
+Plataformas objetivo: PC y Consolas (diseñado nativamente para mando y teclado
+a 60 Hz lógicos / 120+ FPS visuales estables)
+
+Registro de revisión (v1.1):
+
+  - Separación física de controles entre Slam (mantener) y Detonación Forzada
+    (botón dedicado).
+  - Regla de prioridad de acción frente a auto-escalada en escalones de 1
+    bloque.
+  - Especificación del Coyote Crush (9 frames) para el Corte Cinético.
+  - Cierre de reglas en máquina de estados (SLAG, WOBBLE, IGNITING).
+  - Unificación matemática de escala (1 fila = 1 metro), velocidades, Sello
+    Sísmico, mecha y cadencia de eventos cada 250/500/1.000 m.
+
+1. Concepto Nuclear y Visión
+
+ESTRATO es un juego de descenso vertical de alta agresividad donde el jugador
+controla directamente a un Perforador Cinético atrapado en un pozo de 9 columnas
+de ancho (donde cada fila vertical equivale exactamente a 1 metro de
+profundidad). A diferencia de los puzles tradicionales donde el tablero amenaza
+pasivamente desde fuera, aquí habitas dentro del puzle: la gravedad puede
+aplastarte, el oxígeno se agota en tiempo real y tu única defensa es atacar el
+terreno con precisión milimétrica.
+
+El juego elimina el despegue vertical lento de Meteos y lo sustituye por
+combustión expansiva en el sitio: alinear bloques no los borra al instante, sino
+que enciende una mecha viva que debes alimentar antes de que se enfríe o sea
+sofocada por un derrumbe.
+
+El bucle de 5 segundos:
+
+Perforar para descender → Desestabilizar el techo → Permutar bloques en pleno
+derrumbe → Alimentar la ignición en cadena → Detonar escoria y regenerar oxígeno
+→ Caer hacia el siguiente estrato.
+
+2. Esquema de Control (Precisión sin Cursor Libre)
+
+Para conservar la claustrofobia física de Mr. Driller sin perder la velocidad
+endiablada de Tetris Attack, el control elimina el cursor independiente y ancla
+la Permuta de Fase directamente a la posición y dirección del personaje.
+
+| Acción                         | Mando                | Teclado           | Comportamiento exacto                                                                                                                                                                                                                                                                                                                                             |
+| :----------------------------- | :------------------- | :---------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Movimiento / Apuntado**      | Cruceta / Stick Izq. | W A S D / Flechas | Desplazamiento lateral fluido. Mantener Arriba o Abajo fija el apuntado vertical sin desplazarse. **Regla de escalón (1 bloque):** un toque lateral breve (\< 4 frames) orienta al avatar hacia el muro sin trepar; mantener la dirección durante `0,12 s` sin ejecutar Perforar/Permutar trepa automáticamente el escalón. Muros de 2+ bloques detienen el paso. |
+| **Perforar (*Drill*)**         | A / Cruz             | Espacio / J       | Destruye instantáneamente 1 bloque en la dirección apuntada (por defecto Abajo si no se pulsa dirección lateral/superior).                                                                                                                                                                                                                                        |
+| **Permuta Izquierda / Arriba** | LB / L1              | Q / U             | Intercambia el bloque objetivo con su vecino izquierdo (si apuntas abajo/arriba) o con su vecino superior (si apuntas a un muro lateral).                                                                                                                                                                                                                         |
+| **Permuta Derecha / Abajo**    | RB / R1              | E / O             | Intercambia el bloque objetivo con su vecino derecho (si apuntas abajo/arriba) o con su vecino inferior (si apuntas a un muro lateral).                                                                                                                                                                                                                           |
+| **Impulso (*Slam*)**           | RT / R2 (Mantener)   | Shift (Mantener)  | Acelera a **2,5×** (`45 casillas/s`) la velocidad de caída de todos los bloques inestables en pantalla mientras se mantenga pulsado.                                                                                                                                                                                                                              |
+| **Detonación Forzada**         | B / Círculo          | K / F             | **Pulsación instantánea dedicada:** detona prematuramente cualquier ignición activa en el tablero. Separado de *Slam* para permitir acelerar bloques del mismo color hacia una ignición sin apagarla por accidente.                                                                                                                                               |
+| **Re-calibración (*Reroll*)**  | Y / Triángulo        | R                 | Rota las opciones disponibles dentro de una *Cámara de Brecha* (si se dispone de cargas).                                                                                                                                                                                                                                                                         |
+
+Reglas fundamentales de la Permuta
+
+  - Permuta con el vacío (Legal): Al igual que en Tetris Attack, puedes
+    intercambiar un bloque con una casilla vacía adyacente. Esto permite
+    deslizar un bloque fuera de un saliente para provocar un derrumbe o retirar
+    el suelo bajo tus propios pies para dejarte caer al instante.
+  - Fractura quirúrgica: Si un bloque forma parte de una estructura pegada del
+    mismo color (Sticky Cluster), permutarlo lo desacopla limpiamente del resto.
+    Puedes arrancar una sola "bisagra" de un puente de bloques para desplomar
+    media pantalla como una guillotina controlada.
+  - Permutabilidad por material:
+      - Los bloques estándar, las Cápsulas de O₂ y la Escoria natural (SLAG) sí
+        son permutables, permitiendo apartar escoria lateralmente o lanzarla al
+        vacío para evitar bloqueos injustos.
+      - Los Bloques Remache (Estrato IV) y los Monolitos bloquean explícitamente
+        la permuta directa sobre ellos.
+  - Duración de permuta: 4 frames (0,066 s a 60 Hz), con cancelación de entrada
+    (input buffering) de 5 frames para permitir encadenar permutas y
+    perforaciones sin atascos.
+
+3. Mecánicas Completas y Física del Tablero
+
+3.1. Cohesión y Gravedad (ADN Mr. Driller)
+
+El tablero es una matriz vertical de 9 columnas de ancho con seguimiento
+descendente continuo centrado en el jugador.
+
+  - Bloques Cohesivos (Sticky): Dos o más bloques adyacentes ortogonalmente del
+    mismo color se fusionan en una sola pieza rígida. Mientras al menos una
+    celda de esa estructura tenga apoyo debajo, toda la pieza permanece
+    suspendida en el aire.
+  - Estado de Tensión (Wobble): Cuando una pieza o columna pierde su último
+    punto de apoyo, no cae al instante; entra en vibración visual y sonora
+    durante un margen táctico (0,65 s base, reduciéndose progresivamente hasta
+    0,32 s en el Estrato V y 0,25 s en mutadores de alta presión).
+      - Permuta durante Wobble: Es legal permutar un bloque en vibración. Si el
+        desplazamiento le devuelve apoyo debajo, cancela el estado y vuelve a
+        SOLID; si lo separa hacia el vacío sin soporte, hereda el wobbleTimer
+        restante (evitando malabarismos infinitos en el aire).
+  - Caída Libre y Aplastamiento: Al terminar el Wobble, el bloque cae a 18
+    casillas/s (45 casillas/s con Slam). Si impacta sobre el jugador sin ser
+    interceptado mediante Corte Cinético, resulta en muerte instantánea (o
+    pérdida de un escudo si se dispone de Sobrecarga).
+
+3.2. Ignición Viva y Sobrecarga (ADN Meteos + Tetris Attack)
+
+  - Umbral de Ignición (4 bloques): Dado que las piezas de 2 y 3 bloques del
+    mismo color son la arquitectura natural del pozo, la ignición se dispara al
+    conectar 4 o más bloques ortogonales del mismo color (ya sea por caída o
+    mediante Permuta).
+  - Ventana de Combustión (Mecha Viva): Al alcanzar 4+ bloques, el grupo no
+    desaparece. Entra en estado de Ignición durante 1,20 s: los bloques se
+    tornan incandescentes, siguen siendo sólidos (puedes caminar sobre ellos),
+    son inmunes al taladro (evitando apagar tu propia cadena por error al picar
+    al lado) y generan un halo de calor.
+  - Alimentación Activa (Cadenas): Mientras una ignición está ardiendo, puedes
+    provocar una Sobrecarga de dos formas:
+    1.  Introduciendo más bloques del mismo color en el núcleo ardiente
+        (permutándolos o dejándolos caer encima).
+    2.  Provocando una segunda ignición de cualquier color en una casilla
+        adyacente al núcleo antes de que se apague.
+  - Efecto de Sobrecarga: Cada eslabón de la cadena (x2, x3, x4...) reinicia el
+    temporizador de mecha siguiendo una curva fija predecible (1,20 s → 0,95 s →
+    0,75 s → 0,55 s mínimo a partir de x4+ para impedir pausas infinitas),
+    fusiona ambos núcleos en una sola detonación y amplía su Onda Expansiva.
+
+3.3. Escoria Térmica y Ahogamiento (El Castigo Agresivo)
+
+  - Escoria Natural (Bloques Blindados): Bloques oscuros metálicos que requieren
+    5 golpes de perforación para romperse manualmente. Cada golpe manual consume
+    4 % de oxígeno (20 % total), convirtiendo el picado manual en un suicidio
+    lento. Sus contramedidas limpias son volar bloques adyacentes con una Onda
+    Expansiva o permutarlos lateralmente para abrir paso.
+  - Ahogamiento Térmico (Thermal Dud): Si una masa que cae de un color distinto
+    aterriza directamente encima de un núcleo que está en fase de Ignición antes
+    de que detone, sofoca la reacción. La ignición falla, se apaga con un sonido
+    metálico seco y todos los bloques implicados se solidifican instantáneamente
+    en Escoria.
+  - Contramedida (Detonación Forzada): Si ves un derrumbe de color equivocado
+    cayendo hacia tu ignición, puedes pulsar Detonación Forzada (B/K) para
+    detonar el núcleo antes del impacto y salvar la jugada, sacrificando
+    potencial de cadena para evitar generar escoria.
+
+3.4. Escala de Ondas Expansivas y Recompensas
+
+Las explosiones nunca dañan al jugador; al detonar cerca de él, otorgan 0,25 s
+de inmunidad a escombros y empujan los bloques circundantes.
+
+| Nivel de Cadena / Masa   | Radio de Onda Expansiva                                                          | Efecto en Escoria                       | Oxígeno Recuperado | Efecto Especial                                                                        |
+| :----------------------- | :------------------------------------------------------------------------------- | :-------------------------------------- | :----------------- | :------------------------------------------------------------------------------------- |
+| **x1 (4–5 bloques)**     | 0 casillas (solo el propio grupo)                                                | Ninguno                                 | \+2 %              | Limpieza básica.                                                                       |
+| **x1 Masa (6+ bloques)** | 1 casilla ortogonal                                                              | Destruye escoria adyacente              | \+6 %              | Micro-impulso de velocidad.                                                            |
+| **x2 (Cadena doble)**    | 1 casilla ortogonal (cruz)                                                       | Destruye escoria en contacto            | \+10 %             | Ralentiza el consumo de O₂ `1,5 s`.                                                    |
+| **x3 (Cadena triple)**   | Área 3×3 alrededor de cada celda                                                 | Pulveriza toda escoria en el área       | \+18 %             | Onda sísmica: derriba bloques en *Wobble* cercanos.                                    |
+| **x4+ (Supercrítico)**   | **Perforación Vertical:** haz descendente de 3 columnas × 4 filas de profundidad | Desintegra blindajes y bloques anclados | \+30 %             | **Sobrecarga de Núcleo:** otorga 1 escudo cinético que absorbe un aplastamiento fatal. |
+
+3.5. La Jugada Maestra: Corte Cinético (Parry de Derrumbe)
+
+Dado que a 18–45 casillas/s un bloque recorre varias celdas en pocos frames, el
+Parry se implementa mediante un buffer determinista de impacto letal (Coyote
+Crush): cuando un bloque FALLING entra en contacto con la parte superior del
+Perforador, se comprime contra su escudo superior durante una Ventana de Corte
+de 9 frames (0,15 s) antes de confirmar el aplastamiento. Si durante esa ventana
+ejecutas una Permuta (LB/RB) apuntando hacia arriba sobre el bloque agresor:
+
+  - Resolución topológica: El bloque agresor intercambia su posición con la
+    celda lateral elegida (si la celda lateral está ocupada por otro bloque
+    sólido o Escoria, ambos intercambian columna limpiamente siempre que no sea
+    un Bloque Remache inmóvil).
+  - Se dispara un Hitstop de 4 frames con destello blanco puro y golpe de
+    subgrave.
+  - Si al desplazarse completa un grupo de 4, el bloque entra en ignición
+    directamente a potencia base x2.
+  - Otorga +8 % de oxígeno instantáneo y recarga el enfriamiento de movimiento.
+
+3.6. Sistema de Oxígeno
+
+El oxígeno (100 % máx.) drena de forma constante y se acelera con la
+profundidad.
+
+  - Cápsulas de O₂: Repartidas por el pozo (+20 % al recogerlas). Regla clave:
+    las cápsulas obedecen la física de bloques y pueden ser permutadas con LB/RB
+    para arrastrarlas hacia tu columna o salvarlas de quedar sepultadas, pero si
+    les cae un bloque encima se destruyen.
+  - Asfixia: Al llegar al 0 %, el jugador no muere al instante; dispone de 1,5 s
+    de "Último Aliento" en pantalla desaturada donde provocar una ignición x2+ o
+    recoger una cápsula le devuelve a la vida con un 15 % de oxígeno.
+
+4. Estructura de Progresión y Curva de Dificultad
+
+La campaña arcade consiste en un descenso ininterrumpido de 2.500 metros (2.500
+filas), dividido en 5 Estratos de 500 metros.
+
+  - Cada 100 metros (Sello Sísmico): Franja luminosa horizontal que no detiene
+    el flujo; cruzarla desencadena una onda de choque que vaporiza la escoria
+    superior acumulada, restaura +20 % de oxígeno y acelera la capa musical.
+  - Cada 250 metros impares (250 / 750 / 1.250 / 1.750 / 2.250 m): Aparece una
+    Cámara de Brecha para elegir Módulos de Núcleo.
+  - Cada 500 metros (500 / 1.000 / 1.500 / 2.000 m): Transición y Bifurcación de
+    Estrato (en 1.000 m, 2.000 m y 2.500 m precedida por el Guardián de Estrato
+    correspondiente).
+
+La dificultad nunca escala convirtiendo el tablero en ruido aleatorio; cada
+estrato introduce una nueva ley física o tipo de bloque que exige repensar las
+estrategias aprendidas:
+
+| Estrato             | Profundidad       | Colores | Drenaje O₂ | Tiempo Wobble | Nueva Mecánica / Amenaza                                                                                                                                                                                                                |
+| :------------------ | :---------------- | :------ | :--------- | :------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **I. Corteza**      | 0 m – 500 m       | 4       | `1,3 %/s`  | `0,65 s`      | Base pura: Bloques cohesivos, Escoria natural, Ignición y Permuta.                                                                                                                                                                      |
+| **II. Falla**       | 500 m – 1.000 m   | 4       | `1,8 %/s`  | `0,55 s`      | **Bloques de Cristal:** bloques translúcidos que no soportan peso; si cualquier columna cae sobre ellos, se quiebran tras `0,4 s` desencadenando avalanchas masivas en cascada.                                                         |
+| **III. Manto**      | 1.000 m – 1.500 m | 5       | `2,4 %/s`  | `0,48 s`      | **Bloques Conductores (Magma):** no coinciden en color, pero transmiten una Ignición activa a través de sí mismos hacia cualquier otro grupo adyacente, permitiendo cadenas a distancia. Estar pegado a ellos duplica el drenaje de O₂. |
+| **IV. Presión**     | 1.500 m – 2.000 m | 5       | `3,1 %/s`  | `0,40 s`      | **Bloques Remache (Anclados):** bloquean la Permuta directa y el taladro; solo se destruyen con cadenas x3+. Se añaden **Pulsos de Presión** cada `25 s` que comprimen el aire (reduciendo temporalmente el *Wobble*).                  |
+| **V. Singularidad** | 2.000 m – 2.500 m | 5       | `4,0 %/s`  | `0,32 s`      | **Bloques de Fase (Cromáticos):** alternan entre dos colores cada 4 compases de la música con un aviso visual previo. Exigen lectura anticipada y juego en estado de flujo puro.                                                        |
+
+Modos de Juego Adicionales
+
+1.  Abismo Infinito (Endless + Semilla Diaria): A partir de los 2.500 m, los
+    estratos rotan con combinaciones híbridas de mutadores y escalado de
+    velocidad continuo (reduciendo el Wobble hasta un suelo mínimo de 0,25 s).
+    Tabla de clasificación global basada en profundidad y eficiencia de cadena.
+2.  Sprint 500m: Carrera pura contra el cronómetro con un pozo de semilla fija
+    para optimizar rutas de perforación y parries.
+3.  Duelo Sísmico (1v1 Local / Online): Pantalla dividida vertical. Tus cadenas
+    x2+ inyectan capas de Escoria comprimida en la parte superior del pozo
+    rival, alterando su techo en tiempo real. El rival puede devolver el ataque
+    realizando un Corte Cinético sobre la basura enviada.
+
+5. Dirección Artística: Brutalismo Geométrico Cinético
+
+Para alcanzar una estética memorable, dinámica y minimalista que no envejezca,
+ESTRATO rechaza tanto el neón genérico sobrecargado como el estilo infantil
+caricaturesco. Su lenguaje visual bebe de la arquitectura brutalista, el diseño
+gráfico suizo, la precisión táctil de la cerámica mate y la iluminación dinámica
+de Tetris Effect o Control.
+
+5.1. Geometría, Silueta y Legibilidad a 120 FPS
+
+  - Fusión de bordes (Seamless Cohesiveness): Los bloques del mismo color que
+    están unidos no muestran costuras cuadradas internas; sus bordes interiores
+    se funden en una sola losa monolítica con un bisel microscópico exterior. El
+    jugador lee en milisegundos qué piezas son un bloque rígido único y dónde
+    están las líneas de fractura.
+  - Doble codificación (Color + Micro-relieve): Cada color lleva grabado en bajo
+    relieve una geometría minimalista de alta legibilidad (círculo hueco, doble
+    diagonal, chevrón, cruz fina, retícula). Esto garantiza accesibilidad total
+    para daltonismo y lectura periférica a velocidades extremas.
+  - El Perforador (Avatar): Un artefacto geométrico minimalista
+    (octaedro/cápsula metálica suspendida con un núcleo luminoso central y un
+    cono vectorial nítido que indica la dirección exacta de perforación y el
+    arco de permuta). Su silueta se deforma con squash & stretch milimétrico al
+    trepar, perforar o frenar.
+
+5.2. Iluminación Dinámica y Espacio Negativo
+
+  - El pozo como arquitectura vacía: Cuando perforas, el espacio que dejas
+    detrás revela un vacío arquitectónico mate con líneas de estrato en paralaje
+    sutil, partículas de polvo mineral en suspensión y tipografía brutalista
+    gigante grabada directamente en la pared del fondo (0400m, 0500m) que pasa
+    suavemente detrás de la acción.
+  - Luz generada por el juego (Diegetic Lighting): Los bloques inactivos tienen
+    acabado mate absorbente. La iluminación real del escenario emana únicamente
+    de tres fuentes: el núcleo del jugador, las cápsulas de oxígeno y las
+    igniciones activas. Cuando encadenas un x4, el núcleo incandescente proyecta
+    sombras reales suaves sobre los bloques vecinos antes de estallar en una
+    lluvia de partículas con gravedad física.
+
+5.3. Progresión Cromática por Estrato
+
+Las transiciones entre estratos ocurren gradualmente a lo largo de los 20 metros
+previos a cada barrera de 500 m, mutando la paleta completa en tiempo real:
+
+  - Estrato I (Corteza — Bauhaus Industrial): Fondo gris grafito cálido #1C1C1E.
+    Bloques en Bermellón mate, Azul Cobalto, Ocre mineral y Hueso crudo. Escoria
+    en basalto estriado.
+  - Estrato II (Falla — Glaciar y Obsidiana): Fondo pizarra profunda #0F1720.
+    Bloques en Cian hielo, Coral vivo, Ámbar y Plata; los Bloques de Cristal
+    introducen refracción sutil sobre el fondo.
+  - Estrato III (Manto — Horno Cerámico): Fondo carbón volcánico #140E0E.
+    Bloques en Blanco incandescente, Naranja magma, Violeta ácido, Carmesí y Oro
+    pálido.
+  - Estrato IV (Presión — Abismo Técnico): Fondo azul prusia abisal #070D19.
+    Bloques en Titanio, Lima eléctrico, Rojo señal, Índigo y Cobre oxidado.
+  - Estrato V (Singularidad — Alto Contraste Absoluto): Fondo negro puro
+    #000000. Bloques de geometría blanca y gris de altísimo contraste con bordes
+    de aberración cromática iridiscente solo durante las igniciones y parries.
+
+5.4. Interfaz Diegética (Cero Ruido en Pantalla)
+
+  - Oxígeno: Dos venas luminosas ultrafinas incrustadas físicamente en los muros
+    izquierdo y derecho del pozo que descienden como mercurio líquido,
+    replicadas en un anillo de luz alrededor del avatar. Al bajar del 25 %, los
+    muros laten en rojo seco.
+  - Indicador de Permuta: Dos micro-corchetes vectoriales casi imperceptibles ([
+    ]) enmarcan siempre las dos casillas listas para permutar según hacia dónde
+    apuntas.
+  - Multiplicador de Cadena: Números limpios en tipografía grotesca condensada
+    que emergen brevemente en el centro de la explosión y se disipan con el
+    humo.
+
+6. Diseño Sonoro Generativo y Game Feel
+
+El audio actúa como un metrónomo subconsciente que guía la velocidad del
+jugador, fusionando percusión seca industrial con capas de síntesis electrónica
+reactiva:
+
+  - Acciones cuantizadas suavemente: Cada Permuta dispara un chasquido mecánico
+    de alta frecuencia (tipo hi-hat / relé táctil); cada Perforación genera un
+    golpe seco de subgrave con textura mineral. Ambos se alinean sutilmente a
+    una rejilla rítmica de semicorcheas para que jugar rápido suene como
+    percusión electrónica precisa.
+  - Tensión armónica en Ignición: Cuando un grupo entra en Ignición, dispara un
+    acorde de sintetizador con filtro paso-bajo abriéndose progresivamente según
+    se agota la mecha. Cada eslabón de cadena (x2, x3, x4...) sube un intervalo
+    armónico ascendente; la detonación resuelve el acorde con un transitorio
+    contundente y cola de reverberación cavernosa proporcional a la profundidad.
+  - Feedback de peligro: El estado Wobble emite un crujido seco creciente de
+    piedra fracturándose. Al bajar del 25 % de oxígeno, un filtro paso-bajo
+    amortigua las frecuencias altas de la banda sonora dejando solo el pulso
+    grave y la respiración sintética del núcleo.
+  - Micro-física de impacto (Juice):
+      - Perforación normal: 0 frames de hitstop (para no frenar nunca la
+        velocidad de descenso).
+      - Detonación x2 / x3: 2–3 frames de hitstop + sacudida de cámara
+        direccional de 3–5 px siguiendo el vector de la explosión.
+      - Corte Cinético (Parry): 4 frames de hitstop + inversión cromática de 1
+        frame en el punto de impacto + estela geométrica de corte.
+
+7. Arquitectura Técnica y Parámetros de Prototipado
+
+7.1. Máquina de Estados por Celda
+
+La lógica corre en un bucle determinista fijo a 60 Hz (desacoplado del
+renderizado a 120/144 Hz mediante interpolación visual). Cada celda de la matriz
+[9 × N] gestiona uno de estos estados excluyentes:
+
+1.  EMPTY: Espacio transitable o destino de permuta.
+2.  SOLID: Bloque estable; pertenece a un ClusterID calculado dinámicamente por
+    búsqueda en anchura (Flood Fill) tras cada cambio topológico.
+3.  SWAPPING: Transición de 4 frames entre dos celdas contiguas; inmune a caída
+    durante el desplazamiento.
+4.  WOBBLE: Todo el ClusterID pierde soporte inferior. Acumula wobbleTimer hasta
+    el umbral del estrato actual. Si recupera apoyo debajo (p. ej. al permutar
+    un bloque debajo o desplazar la pieza sobre suelo firme), cancela el estado
+    y vuelve a SOLID. Si un bloque en WOBBLE es permutado lateralmente al vacío,
+    conserva su wobbleTimer acumulado.
+5.  FALLING: Descenso continuo con comprobación de colisión sub-celda contra el
+    jugador (disparando el buffer de 9 frames de Corte Cinético al primer
+    contacto superior) y contra bloques inferiores.
+6.  IGNITING: Mecha activa (fuseTimer). Inmune a perforación directa (Drill). Si
+    recibe colisión vertical de un bloque FALLING de color distinto, transiciona
+    instantáneamente a SLAG (Ahogamiento Térmico). Si recibe mismo color o
+    adyacencia de otra ignición, incrementa chainLevel y actualiza fuseTimer
+    según la secuencia fija.
+7.  DETONATING: 6 frames de expansión visual antes de pasar a EMPTY y aplicar
+    daño de Onda Expansiva en su radio.
+8.  SLAG: Escoria con hp = 5 (permutable, destruible por explosiones o taladro).
+9.  RIVET: Bloque Remache inmóvil e inmune a permuta/taladro (solo destruible
+    con cadenas x3+).
+
+7.2. Generador Procedural de Estratos (Garantías de Juego Justo)
+
+  - Regla anti-ignición al nacer: El generador construye agrupaciones orgánicas
+    de 1 a 3 bloques del mismo color, pero valida por Flood Fill que ninguna
+    pieza recién generada alcance tamaño 4 antes de entrar en el campo visual
+    del jugador.
+  - Pacing garantizado de Oxígeno: El algoritmo asegura al menos una cápsula de
+    O₂ cada 18–24 filas (espaciado dinámico según el drenaje del estrato), nunca
+    completamente encerrada en una caja cerrada de Escoria o Remaches.
+  - Densidad de Escoria controlada: La escoria se genera en patrones
+    arquitectónicos reconocibles (arcos, vigas horizontales de 3–4 casillas o
+    pilares verticales) en lugar de ruido disperso.
+
+7.3. Tabla de Constantes Iniciales (Base de Equilibrado Unificada)
+
+| Parámetro                            | Valor inicial (Prototipo)                                  | Notas de ajuste                                                         |
+| :----------------------------------- | :--------------------------------------------------------- | :---------------------------------------------------------------------- |
+| Escala espacial                      | `1 fila = 1 metro`                                         | 2.500 m totales en campaña estándar.                                    |
+| Ancho del tablero                    | `9 columnas`                                               | Impar para tener eje central natural de arranque.                       |
+| Velocidad horizontal jugador         | `8,5 casillas/s`                                           | Aceleración instantánea (2 frames), parada seca (1 frame).              |
+| Umbral orientación vs. auto-escalada | `< 4 frames` orienta / `7 frames` (`0,12 s`) trepa         | Se cancela la trepada si se ejecuta Drill o Swap antes de completar.    |
+| Duración de Permuta                  | `4 frames` (`66 ms`)                                       | Permite hasta \~10 permutas/segundo en manos expertas.                  |
+| Ventana de *Corte Cinético*          | `9 frames` (`150 ms`)                                      | Implementada como *Coyote Crush* al tocar la parte superior del avatar. |
+| Mecha de Ignición (curva fija)       | `72 → 57 → 45 → 33 frames` (`1,20 → 0,95 → 0,75 → 0,55 s`) | Mínimo `0,55 s` desde x4 en adelante.                                   |
+| Velocidad de caída normal / *Slam*   | `18 / 45 casillas/s`                                       | Multiplicador `2,5×` para conservar legibilidad a 60 Hz.                |
+
+EXPANSIÓN ROGUELITE DEL GDD — ESTRATO
+
+Para elevar ESTRATO al nivel sistémico de Spelunky, Noita, Hades o Balatro, la
+progresión obedece una regla innegociable: las mejoras nunca convierten el juego
+en un trámite numérico. Sumar un "+5 % de oxígeno" tras morir es relleno;
+desbloquear un módulo que convierte la Escoria en explosivo volátil o abrir una
+bóveda oculta en el Estrato III haciendo un Parry contra un monolito es lo que
+genera cientos de horas de obsesión.
+
+8. Arquitectura Roguelite: El Doble Bucle
+
+El juego se articula en dos bucles sincronizados: el Descenso (Micro-bucle
+de 15–25 minutos), donde construyes una máquina de sinergias destructivas, y La
+Superficie / El Archivo (Macro-bucle persistente), donde cada muerte expande tus
+herramientas, tu conocimiento del pozo y el acceso a capas ocultas.
+
+8.1. Selección Diegética sin Menús: Las Cámaras de Brecha
+
+Las decisiones de partida ocurren físicamente dentro de la geometría del
+tablero, evitando solapamientos con los cambios de estrato:
+
+  - Cada 100 m (Sello Sísmico): Sin pausa. Vaporiza la escoria superior, recarga
+    +20 % de O₂ y acelera la capa musical.
+  - Cada 250 m impares (250, 750, 1.250, 1.750, 2.250 m — Cámara de Brecha): El
+    suelo se solidifica en un techo plano que detiene temporalmente el drenaje
+    de oxígeno. Las 9 columnas se dividen en 3 compuertas de 3 columnas cada
+    una, selladas con cristal y marcadas con el glifo y nombre de un Módulo de
+    Núcleo. Caminas hasta la compuerta elegida y perforas el sello directamente
+    con tu taladro; el módulo se acopla al chasis y caes al siguiente tramo
+    mientras las otras dos opciones se cierran arriba.
+  - Cada 500 m (500, 1.000, 1.500, 2.000 m — Bifurcación de Estrato): Al superar
+    el Estrato (y derrotar al Guardián en los 1.000 m y 2.000 m), el pozo ofrece
+    2 rutas físicas (mitad izquierda vs. mitad derecha) con perfiles de riesgo
+    distintos:
+      - Ejemplo en Estrato II: Falla Cristalina (densidad extrema de Bloques de
+        Cristal + doble recompensa de Isótopos) frente a Conducto Presurizado
+        (drenaje de O₂ reducido, pero el Wobble cae un 20 % más rápido y
+        garantiza una Cápsula de Anomalía).
+
+9. Construcción de Builds y Sinergias (En Partida)
+
+Cada Perforador dispone de 6 ranuras de Módulos de Núcleo y 2 ranuras de
+Sobrecargas (Anomalías). Al llenar las 6 ranuras, las siguientes Cámaras de
+Brecha permiten Fusionar (subir un módulo existente a versión MK-II, alterando
+su comportamiento) o Purgar uno para cambiar de estrategia.
+
+9.1. Los 4 Arquetipos de Sinergia
+
+| Arquetipo                                | Filosofía                                                                 | Ejemplos de Módulos Transformadores                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| :--------------------------------------- | :------------------------------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pirolítico** *(Ignición y Mecha)*      | Convertir el pozo en un reactor en cadena permanente.                     | **• Conductividad Diagonal:** Las igniciones se propagan y encadenan también por vértices diagonales.<br>**• Brasa Persistente:** Al detonar una cadena x3+, deja una casilla ardiente en el aire durante `2 s` que enciende automáticamente cualquier bloque que caiga sobre ella.<br>**• Ignición por Masa:** El umbral de ignición baja de 4 a **3 bloques** exclusivamente para el color predominante del estrato actual.                                      |
+| **Balístico** *(Gravedad, Slam y Parry)* | Provocar derrumbes suicidas a propósito y convertir la caída en arma.     | **• Martillo de Vacío:** Mantener *Slam* convierte cada bloque que cae más de 4 filas en un proyectil que perfora 1 bloque debajo al impactar.<br>**• Contraataque Sísmico:** Ejecutar un *Corte Cinético (Parry)* lanza una onda horizontal que permuta automáticamente todos los bloques de esa fila hacia el centro.<br>**• Escudo de Inercia:** Caer 6 o más filas sin tocar suelo otorga `1,2 s` de invulnerabilidad al aplastamiento.                        |
+| **Parásito** *(Escoria y Riesgo)*        | Invertir el castigo de *Meteos*: crear y devorar Escoria deliberadamente. | **• Alquimia de Basalto:** Provocar a propósito un *Ahogamiento Térmico* convierte la escoria resultante en **Escoria Volátil** que explota en un área 5×5 al primer golpe de taladro.<br>**• Pulmón de Carbón:** Destruir escoria (por explosión o perforación) ya no cuesta oxígeno; regenera **+4 % de O₂** por bloque.<br>**• Taladro de Tungsteno:** La escoria se rompe en 2 golpes en vez de 5 y suelta esquirlas que inician *Wobble* en columnas vecinas. |
+| **Cuántico** *(Permuta y Espacio)*       | Romper las leyes topológicas de *Tetris Attack*.                          | **• Brazo de Fase:** Permite permutar bloques saltando 1 casilla intermedia (alcance de 2 bloques).<br>**• Eco de Permuta:** Si permutas dos bloques del mismo color separados por un tercero diferente, el bloque central se vaporiza.<br>**• Recolección Telequinética:** Las cápsulas de O₂ que cruzan tu fila horizontal son atraídas automáticamente hacia tu posición si no tienen bloqueo sólido.                                                           |
+
+9.2. Sobrecargas (Artefactos de Doble Filo)
+
+Objetos de altísimo poder con un coste físico real que redefinen toda la
+partida:
+
+  - Núcleo Desbocado: Todas tus detonaciones cuentan como +1 nivel de cadena
+    automático (x1 actúa como x2, x3 dispara el haz vertical de x4), pero no
+    puedes usar Detonación Forzada y el tiempo de mecha se reduce a la mitad.
+  - Respiración Anaeróbica: Las cápsulas de oxígeno dejan de aparecer en el
+    pozo. A cambio, tu drenaje de O₂ se detiene por completo mientras haya al
+    menos una ignición ardiendo en pantalla y cada Parry restaura +25 % de O₂.
+  - Gravedad Inversa de Escombros: Al detonar una cadena x3+, los bloques encima
+    de la explosión son lanzados hacia arriba 3 casillas (guiño táctico
+    controlado a Meteos), comprándote tiempo de reacción bajo techo, pero caen
+    luego a velocidad de Slam.
+
+9.3. Ejemplo de Sinergia Emergente ("Build Rota")
+
+El Reactor de Basalto: Combinas Alquimia de Basalto + Pulmón de Carbón +
+Martillo de Vacío. En lugar de evitar que los bloques caigan sobre tus
+igniciones, provocas derrumbes encima de ellas con Slam para generar bloques de
+Escoria Volátil en cadena. Luego bajas dando un solo toque de taladro a cada
+uno, desencadenando explosiones 5×5 continuas que te llenan el oxígeno al 100 %
+mientras pulverizas 200 metros en 15 segundos.
+
+10. Metaprogresión: El Ciclo de la Muerte (El Archivo)
+
+Cuando mueres (por aplastamiento o asfixia), el núcleo de tu Perforador eyecta
+hacia la superficie una Caja Negra con los datos recolectados, separando la
+progresión en dos divisas y cuatro pilares permanentes.
+
+10.1. Economía Persistente
+
+1.  Isótopos (Divisa común): Se extraen al destruir Escoria, completar cadenas
+    x3+ y cruzar Sellos Sísmicos. Si mueres, la Caja Negra rescata
+    automáticamente el 60 % de lo recolectado; si depositas tu carga en un Tubo
+    de Extracción (evento raro dentro del pozo) o completas el descenso,
+    conservas el 100 %.
+2.  Núcleos de Anomalía (Divisa rara): Solo se obtienen al derrotar Guardianes
+    de Estrato, abrir Bóvedas Secretas o superar nuevos hitos de
+    profundidad/ascensión.
+
+10.2. Los 4 Pilares de Mejora Permanente (En El Archivo)
+
+1. Hangar de Chasis (4 estilos de juego radicalmente distintos)
+
+  - MK-I Vértice (Inicial): Equilibrado. Permuta estándar, 100 % O₂, 6 ranuras
+    de módulos.
+  - MK-II Espectro (Desbloqueo: 1.000 m): Permuta a alcance 2 por defecto y se
+    mueve un 20 % más rápido. Su oxígeno máximo es 75 %, pero puede atravesar
+    bloques en estado de Ignición como si fueran aire.
+  - MK-III Yunque (Desbloqueo: destruir 500 bloques de Escoria): Perforación
+    pesada (rompe Escoria en 3 golpes) y absorbe 1 aplastamiento fatal por
+    Estrato convirtiendo el bloque agresor en polvo. No puede trepar escalones
+    automáticamente sin perforar o permutar apoyo.
+  - MK-IV Metrónomo (Desbloqueo: encadenar 3 Cortes Cinéticos en una partida):
+    Chasis de élite sincronizado al BPM de la música. Cada perforación o permuta
+    ejecutada exactamente en el pulso musical genera un +30 % de carga térmica y
+    amplía el radio de explosión; fallar el ritmo penaliza el consumo de O₂.
+
+2. Calibración de Infraestructura (Agencia, no power creep) Mejoras permanentes
+con tope estricto (máx. 3 niveles cada una) enfocadas en el control táctico
+sobre el azar:
+
+  - Re-calibración (Reroll): Permite pulsar Y/R en una Cámara de Brecha para
+    rotar los 3 módulos ofrecidos (hasta 3 cargas por partida).
+  - Descarte de Planos (Banish): Permite bloquear permanentemente hasta 5
+    módulos que no encajen con tu estilo para refinar el mazo de probabilidades.
+  - Inyección Inicial: Arrancar cada partida eligiendo 1 Módulo común ya en los
+    0 m.
+  - Cápsula de Salvamento: Añade en el pozo 1 Tubo de Extracción por Estrato
+    para asegurar el 100 % de tus Isótopos o enviar un módulo a tu Bóveda de
+    Reserva para recuperarlo en la siguiente partida.
+  - Ascensores de Estrato (Atajos con coste): Tras superar un Estrato 3 veces,
+    habilita un atajo directo a 500 m, 1.000 m o 1.500 m para entrenar o cazar
+    secretos profundos, comenzando con un paquete compensatorio de módulos
+    aleatorios (puntuación bloqueada para tablas globales).
+
+3. Expansión del Catálogo (Desbloqueos por Hazaña) Más de 60 Módulos y 15
+Sobrecargas se incorporan al pool de partidas no solo comprándolos con Isótopos,
+sino cumpliendo micro-hazañas técnicas (ej. "Sobrevive 10 segundos en Último
+Aliento", "Detona una cadena x5 sin tocar el suelo").
+
+4. Protocolo de Profundidad (Niveles de Ascensión I–X) Al completar por primera
+vez los 2.500 m, desbloqueas los 10 Niveles de Presión seleccionables antes de
+descender. Cada nivel añade una capa permanente de agresividad (ej. Nivel II:
+los Bloques de Cristal aparecen desde el Estrato I; Nivel V: Guardianes
+alterados; Nivel VIII: el Ahogamiento Térmico infecta también los bloques
+contiguos; Nivel X: el examen definitivo de maestría).
+
+11. Guardianes de Estrato, Secretos y Misterio Sistémico
+
+El pozo esconde anomalías mecánicas que el juego nunca explica con tutoriales,
+sino mediante pistas visuales y sonoras incrustadas en la arquitectura.
+
+11.1. Guardianes de Estrato (Combates de Puzle en Tiempo Real)
+
+En las cotas 1.000 m, 2.000 m y 2.500 m, antes de abrir la Bifurcación o el
+cierre del descenso, se activa una Entidad Arquitectónica durante 45–60 segundos
+o hasta destruir sus nodos:
+
+  - 1.000 m — EL TELAR: Estructura geométrica suspendida en las paredes
+    laterales que dispara cables láser horizontales cada 8 segundos, soldando
+    filas enteras en un único bloque cohesivo gigante. Debes provocar
+    detonaciones x2+ junto a sus 3 anclajes en los muros del pozo para
+    quebrarlo.
+  - 2.000 m — EL PÉNDULO: Un bloque monolítico indestructible de 3×3 que oscila
+    lentamente de izquierda a derecha aplastando todo a su paso y alterando la
+    gravedad local. Solo se daña reflejando sus escombros con Cortes Cinéticos o
+    haciéndole chocar contra detonaciones x3+.
+  - 2.500 m — EL SELLO DEL ARQUITECTO: Núcleo central que cambia la polaridad de
+    color de todo el tablero cada 4 compases mientras el techo superior comienza
+    a descender físicamente para aplastarte.
+
+11.2. Bóvedas Ocultas y Eventos de Pozo
+
+  - Monolitos de Resonancia: Bloques de obsidiana negra con un glifo grabado y
+    un color sutil en su grieta interior. No se pueden perforar ni permutar. Si
+    detonas una cadena x3+ exactamente del color de su grieta pegada a ellos, se
+    fracturan revelando una Reliquia Única o un pasadizo lateral.
+  - Cámara del Relojero: Grieta lateral en el muro del pozo (visible solo cuando
+    una explosión ilumina la pared oscura). Entrar lleva a una sala fija de
+    puzle puro de 15 s sin drenaje de O₂: si limpias toda la estructura en 3
+    permutas exactas, obtienes un módulo MK-II gratuito.
+  - El Comerciante de Vacío (Alta Tensión): Nodo incrustado en el Estrato III
+    que intercambia capacidad máxima de Oxígeno (ej. sacrificas -15 % de tu
+    barra máxima para el resto de la partida) a cambio de Sobrecargas
+    legendarias.
+
+11.3. El Gran Secreto: La Ruta hacia el Estrato VI (Cero Absoluto)
+
+El juego tiene un Final Estándar al vencer en los 2.500 m, pero esconde una
+cadena de secretos interconectados inspirada en Spelunky:
+
+1.  Pista 1 — La Llave de Fase (Estrato I): Entre los 300 m y 450 m se genera
+    siempre un bloque de color anómalo (blanco perlado con vibración ultrasónica
+    audible). Si en vez de perforarlo lo permutas lateralmente hasta encajarlo
+    en una hendidura oscura del muro derecho, desbloqueas el Fragmento Alfa (una
+    esfera orbitando tu chasis).
+2.  Pista 2 — El Sacrificio Térmico (Estrato III): Llevando el Fragmento Alfa,
+    debes dejar deliberadamente que una Ignición x3 sea aplastada por un Bloque
+    Conductor (Ahogamiento Térmico intencionado). La reacción funde el fragmento
+    en la Lanza de Singularidad, una reliquia que ocupa una ranura de Sobrecarga
+    y emite pulsos visuales hacia abajo.
+3.  Pista 3 — La Fractura del Fondo (Estrato V, 2.500 m): Al derrotar a El Sello
+    del Arquitecto portando la Lanza de Singularidad, el suelo final se agrieta
+    mostrando un abismo blanco cegador. Si perforas la grieta, caes hacia el
+    secreto verdadero del juego:
+
+ESTRATO VI: EL NÚCLEO INCONEXO (2.500 m → 3.000 m, Secreto)
+
+  - Estética: Inversión absoluta. Fondo blanco alabastro puro #F4F4F0 con
+    bloques de geometría negra tinta, líneas arquitectónicas doradas y sombras
+    duras nítidas. Silencio minimalista roto solo por el audio reactivo de tus
+    acciones.
+  - Mecánica Única (Techo Vivo): No hay barra de oxígeno. En su lugar, la
+    singularidad superior te persigue descendiendo a velocidad constante
+    devorando todo lo que queda atrás; solo las cadenas x3+ y los Cortes
+    Cinéticos empujan hacia arriba el colapso del techo. Aquí aguarda el
+    verdadero núcleo narrativo y el desbloqueo definitivo del juego.
+
+11.4. El Códice Geológico (Narrativa sin Texto Invasivo)
+
+En El Archivo, un plano arquitectónico vertical gigante del pozo se va dibujando
+poco a poco en líneas blancas sobre fondo grafito a medida que descubres
+elementos. Cada tipo de bloque, Guardián, Bóveda o muerte desbloquea una
+anotación técnica críptica de 2 líneas que revela el misterio del pozo: no es
+una mina natural, sino un motor de compresión planetaria autoregenerativo
+diseñado para sepultar algo en el kilómetro 3. Cada Perforador destruido pasa a
+formar parte de la propia Escoria del pozo; en la coordenada exacta de tu muerte
+anterior puedes hallar un Bloque de Chasis Caído (Ghost Echo) que, al detonarse
+con una cadena, te devuelve 1 módulo de tu partida previa.
+
+12. Integración Estética y Técnica de la Capa Roguelite
+
+12.1. Evolución Visual Diegética del Avatar
+
+Tu build se manifiesta físicamente en el diseño minimalista del Perforador para
+evitar saturar el HUD a 120 FPS:
+
+  - Módulos Pirolíticos añaden anillos incandescentes giratorios alrededor del
+    octaedro central.
+  - Módulos Balísticos transforman el cono inferior en un ariete geométrico más
+    ancho con estela de choque.
+  - Módulos Cuánticos generan un ligero desdoblamiento espectral (silueta
+    fantasma a 1 casilla) que indica visualmente tu alcance de permuta
+    extendido.
+  - Solo al pausar o entrar en una Cámara de Brecha se despliega una retícula
+    suiza impecable con los 6 iconos vectoriales de tus módulos activos y sus
+    sinergias resaltadas con líneas finas.
+
+12.2. Determinismo y Semillas
+
+  - Semilla Compartible: Cada descenso genera una semilla alfanumérica de 6
+    caracteres (ej. STR-84K) que determina de forma 100 % determinista la
+    geometría de los estratos, las Cámaras de Brecha y la posición de los
+    secretos.
+  - Descenso Diario (Daily Seed): Semilla global diaria con un Chasis
+    preasignado, un único intento y tabla de clasificación mundial.
+
+13. Hoja de Ruta Completa de Desarrollo (32 Semanas)
+
+1.  Fase 1 — Caja Gris Cinética (Semanas 1–3): Matriz [9 × N], movimiento con
+    umbral de orientación/auto-escalada, perforación, permuta con LB/RB
+    (fractura de clusters, permuta con vacío y escoria), separación de Slam y
+    Detonación Forzada, física WOBBLE/FALLING y máquina de estados
+    IGNITING/SLAG.
+2.  Fase 2 — Game Feel y Combustión (Semanas 4–6): Corte Cinético con buffer
+    Coyote Crush de 9 frames, hitstop, ondas expansivas (x1 a x4+), sistema de
+    oxígeno con cápsulas permutables y generador procedural anti-ignición de los
+    primeros 500 m.
+3.  Fase 3 — Identidad Visual y Audio Reactivo (Semanas 7–10): Shader de fusión
+    de bordes sin costuras (Seamless Sticky Blocks), iluminación 2D diegética
+    desde las igniciones, tipografía brutalista en el fondo, HUD en los muros y
+    motor de audio cuantizado.
+4.  Fase 4 — Los 5 Estratos y Modos (Semanas 11–14): Bloques de Cristal,
+    Conductores, Remaches y Cromáticos, las 5 paletas con transiciones fluidas,
+    Abismo Infinito y Sprint 500m.
+5.  Fase 5 — Equilibrado Competitivo y Duelo 1v1 (Semanas 15–18): Ajuste de
+    curvas de oxígeno y Wobble mediante telemetría (mapas de calor de muertes
+    por asfixia vs. aplastamiento), modo 1v1 y rendimiento bloqueado a 120+ FPS.
+6.  Fase 6 — Sistema de Módulos y Cámaras de Brecha (Semanas 19–22): Bus de
+    eventos del tablero (onSwap, onDrill, onIgnite, onThermalDud, onParry,
+    onDetonate) para que los 60 módulos operen como listeners desacoplados.
+    Construcción de compuertas físicas en cotas impares de 250 m.
+7.  Fase 7 — El Archivo y Los 4 Chasis (Semanas 23–26): Hub brutalista
+    minimalista, persistencia (Isótopos, Caja Negra, Ghost Echo), reglas
+    específicas de Espectro, Yunque y Metrónomo, y árbol de Calibración.
+8.  Fase 8 — Guardianes, Secretos y Estrato VI (Semanas 27–32): Encuentros de El
+    Telar, El Péndulo y El Sello del Arquitecto, generación de
+    Bóvedas/Monolitos, cadena secreta hacia Cero Absoluto, Códice Geológico y
+    los 10 niveles del Protocolo de Profundidad.

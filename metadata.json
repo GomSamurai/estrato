@@ -1,0 +1,6 @@
+{
+  "name": "ESTRATO",
+  "description": "Arcade roguelite de descenso vertical y puzle cinético en tiempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
