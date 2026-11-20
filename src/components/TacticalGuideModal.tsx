@@ -1,5 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Layers, Shield, Sparkles, Terminal, UserCheck, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  Shield,
+  Sparkles,
+  Terminal,
+  UserCheck,
+  X,
+} from 'lucide-react';
 import { CHASSIS_LIST, MINERAL_SPECS, STRATA } from '../data/catalog';
 import { GADGETS } from '../data/crafting';
 import { KeyBindings, MineralSpecDef } from '../types/game';
@@ -43,6 +55,26 @@ interface TacticalGuideModalProps {
 }
 
 type GuideTab = 'CONCEPT' | 'HUD_UI' | 'MOVEMENT' | 'COUNTER' | 'ABILITIES' | 'BLOCKS';
+type AbilityFilter = 'ALL' | 'OPERATORS' | 'GADGETS' | 'SYNERGIES';
+type BlockFilter = 'ALL' | 'BASIC' | 'TACTICAL' | 'HAZARD';
+
+const BASIC_BLOCK_KINDS = new Set<MineralSpecDef['kind']>([
+  'SOLID',
+  'HEAVY_ORE',
+  'POROUS_SPONGE',
+  'SLAG',
+  'GRAVEL',
+  'PHASE',
+]);
+
+const HAZARD_BLOCK_KINDS = new Set<MineralSpecDef['kind']>([
+  'MAGMA_NODE',
+  'GAS_POCKET',
+  'ACID_VAT',
+  'GRAV_WELL',
+  'SHOCK_MINE',
+  'BIO_SPORE',
+]);
 
 function drawPixelLabel(
   ctx: CanvasRenderingContext2D,
@@ -74,52 +106,45 @@ function drawPixelLabel(
   ctx.fillText(text, Math.round(cx), y);
 }
 
-const BlockGuideThumb: React.FC<{ kind: MineralSpecDef['kind']; size?: number }> = ({ kind, size = 34 }) => {
+// Render block thumbnail once at static frame 0 so opening BLOCKS creates 0 rAF loops
+const BlockGuideThumb: React.FC<{ kind: MineralSpecDef['kind']; size?: number }> = ({ kind, size = 36 }) => {
   const ref = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
-    let id = 0;
-    const draw = (now: number) => {
-      const c = ref.current;
-      if (c) {
-        const ctx = c.getContext('2d');
-        if (ctx) {
-          ctx.imageSmoothingEnabled = false;
-          ctx.clearRect(0, 0, size, size);
-          const f = Math.floor((now / 1000) * 6) & 3;
-          let spr: HTMLCanvasElement;
-          if (kind === 'SLAG') spr = getSlagBlockSprite(STRATA[0].slagColor, 4, false, 0, f, false);
-          else if (kind === 'CRYSTAL') spr = getCrystalBlockSprite(STRATA[1].blockColors[0], 0, false, f);
-          else if (kind === 'CONDUCTOR') spr = getConductorBlockSprite(f, false);
-          else if (kind === 'PHASE') spr = getPhaseBlockSprite(STRATA[4].blockColors[0], STRATA[2].blockColors[2], 2, false, f);
-          else if (kind === 'OXYGEN') spr = getOxygenPodSprite(f);
-          else if (kind === 'GEODE') spr = getGeodeBlockSprite(f);
-          else if (kind === 'CRYO_VENT') spr = getCryoVentBlockSprite(f);
-          else if (kind === 'MAGMA_NODE') spr = getMagmaNodeBlockSprite(f);
-          else if (kind === 'GRAVEL') spr = getGravelBlockSprite(0);
-          else if (kind === 'BOUNCE_PAD') spr = getBouncePadBlockSprite(f, false);
-          else if (kind === 'RESONANCE_VEIN') spr = getResonanceVeinBlockSprite(f);
-          else if (kind === 'SUPPORT_BEAM') spr = getSupportBeamBlockSprite(f);
-          else if (kind === 'GAS_POCKET') spr = getGasPocketBlockSprite(f);
-          else if (kind === 'ACID_VAT') spr = getAcidVatBlockSprite(f);
-          else if (kind === 'GRAV_WELL') spr = getGravWellBlockSprite(f);
-          else if (kind === 'SHOCK_MINE') spr = getShockMineBlockSprite(f, f >= 2);
-          else if (kind === 'TREASURE_CACHE') spr = getTreasureCacheBlockSprite(f);
-          else if (kind === 'HEAVY_ORE') spr = getHeavyOreBlockSprite(STRATA[0].blockColors[1], 1, f);
-          else if (kind === 'PRISM_CORE') spr = getPrismCoreBlockSprite(f);
-          else if (kind === 'PYRITE_CHARGE') spr = getPyriteChargeBlockSprite(f);
-          else if (kind === 'POROUS_SPONGE') spr = getPorousSpongeBlockSprite(STRATA[0].blockColors[2], f);
-          else if (kind === 'MAGNET_COIL') spr = getMagnetCoilBlockSprite(f);
-          else if (kind === 'CRYO_SLAG') spr = getCryoSlagBlockSprite(0, f);
-          else if (kind === 'SEISMIC_BELL') spr = getSeismicBellBlockSprite(f);
-          else if (kind === 'BIO_SPORE') spr = getBioSporeBlockSprite(f);
-          else spr = getMineralBlockSprite(1, STRATA[0].blockColors[0], 0, 0, 0, false);
-          ctx.drawImage(spr, 1, 1, size - 2, size - 2);
-        }
-      }
-      id = requestAnimationFrame(draw);
-    };
-    id = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(id);
+    const c = ref.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, size, size);
+    const f = 0;
+    let spr: HTMLCanvasElement;
+    if (kind === 'SLAG') spr = getSlagBlockSprite(STRATA[0].slagColor, 4, false, 0, f, false);
+    else if (kind === 'CRYSTAL') spr = getCrystalBlockSprite(STRATA[1].blockColors[0], 0, false, f);
+    else if (kind === 'CONDUCTOR') spr = getConductorBlockSprite(f, false);
+    else if (kind === 'PHASE') spr = getPhaseBlockSprite(STRATA[4].blockColors[0], STRATA[2].blockColors[2], 2, false, f);
+    else if (kind === 'OXYGEN') spr = getOxygenPodSprite(f);
+    else if (kind === 'GEODE') spr = getGeodeBlockSprite(f);
+    else if (kind === 'CRYO_VENT') spr = getCryoVentBlockSprite(f);
+    else if (kind === 'MAGMA_NODE') spr = getMagmaNodeBlockSprite(f);
+    else if (kind === 'GRAVEL') spr = getGravelBlockSprite(0);
+    else if (kind === 'BOUNCE_PAD') spr = getBouncePadBlockSprite(f, false);
+    else if (kind === 'RESONANCE_VEIN') spr = getResonanceVeinBlockSprite(f);
+    else if (kind === 'SUPPORT_BEAM') spr = getSupportBeamBlockSprite(f);
+    else if (kind === 'GAS_POCKET') spr = getGasPocketBlockSprite(f);
+    else if (kind === 'ACID_VAT') spr = getAcidVatBlockSprite(f);
+    else if (kind === 'GRAV_WELL') spr = getGravWellBlockSprite(f);
+    else if (kind === 'SHOCK_MINE') spr = getShockMineBlockSprite(f, false);
+    else if (kind === 'TREASURE_CACHE') spr = getTreasureCacheBlockSprite(f);
+    else if (kind === 'HEAVY_ORE') spr = getHeavyOreBlockSprite(STRATA[0].blockColors[1], 1, f);
+    else if (kind === 'PRISM_CORE') spr = getPrismCoreBlockSprite(f);
+    else if (kind === 'PYRITE_CHARGE') spr = getPyriteChargeBlockSprite(f);
+    else if (kind === 'POROUS_SPONGE') spr = getPorousSpongeBlockSprite(STRATA[0].blockColors[2], f);
+    else if (kind === 'MAGNET_COIL') spr = getMagnetCoilBlockSprite(f);
+    else if (kind === 'CRYO_SLAG') spr = getCryoSlagBlockSprite(0, f);
+    else if (kind === 'SEISMIC_BELL') spr = getSeismicBellBlockSprite(f);
+    else if (kind === 'BIO_SPORE') spr = getBioSporeBlockSprite(f);
+    else spr = getMineralBlockSprite(1, STRATA[0].blockColors[0], 0, 0, 0, false);
+    ctx.drawImage(spr, 1, 1, size - 2, size - 2);
   }, [kind, size]);
   return (
     <canvas
@@ -137,7 +162,13 @@ const GuideDioramaCanvas: React.FC<{ tab: GuideTab }> = ({ tab }) => {
 
   useEffect(() => {
     let animId = 0;
+    let lastDraw = 0;
     const render = (now: number) => {
+      if (now - lastDraw < 48) {
+        animId = requestAnimationFrame(render);
+        return;
+      }
+      lastDraw = now;
       const canvas = ref.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -221,7 +252,6 @@ const GuideDioramaCanvas: React.FC<{ tab: GuideTab }> = ({ tab }) => {
             ctx.strokeStyle = '#3F4354';
             ctx.strokeRect(18, 24, 404, 94);
 
-            // Top bar widgets (fit strictly inside x=28..412)
             ctx.fillStyle = '#090A0F';
             ctx.fillRect(28, 32, 114, 22);
             ctx.strokeStyle = '#38BDF8';
@@ -243,7 +273,6 @@ const GuideDioramaCanvas: React.FC<{ tab: GuideTab }> = ({ tab }) => {
             const hi = Math.floor(t) % 2;
             drawPixelLabel(ctx, 'BARRA SUPERIOR: OXÍGENO, ESCUDOS, COTA Y PELIGRO', w / 2, 71, hi === 0 ? '#FFFFFF' : '#94A3B8', 9, false);
 
-            // Bottom skill dock widgets (fit cleanly inside x=28..410)
             const btns: [string, string, number][] = [
               ['⚡ 100%', '#FACC15', 28],
               ['✦ 85%', '#38BDF8', 106],
@@ -265,7 +294,6 @@ const GuideDioramaCanvas: React.FC<{ tab: GuideTab }> = ({ tab }) => {
             for (let c = 0; c < 8; c++) {
               ctx.drawImage(tile, 44 + c * 44, 88, 34, 34);
             }
-            // Step block on column 4
             ctx.drawImage(tile, 220, 54, 34, 34);
 
             const prog = (t % 2) / 2;
@@ -353,7 +381,7 @@ const GuideDioramaCanvas: React.FC<{ tab: GuideTab }> = ({ tab }) => {
               drawPixelLabel(ctx, lbl, sx + 16, 86, '#D4D4D8', 8, false);
             });
             drawPixelLabel(ctx, 'CADA ESTRATO DESBLOQUEA NUEVAS INTERACCIONES', w / 2, 114, '#38BDF8', 9);
-            drawPixelLabel(ctx, 'DESLIZA ABAJO PARA VER LAS 26 FICHAS COMPLETAS', w / 2, 139, '#A3E635', 9);
+            drawPixelLabel(ctx, 'FILTRA POR CATEGORÍA O DESLIZA HACIA ABAJO', w / 2, 139, '#A3E635', 9);
           }
         }
       }
@@ -380,13 +408,32 @@ export const TacticalGuideModal: React.FC<TacticalGuideModalProps> = ({
   keyBindings,
 }) => {
   const [tab, setTab] = useState<GuideTab>('CONCEPT');
+  const [abilityFilter, setAbilityFilter] = useState<AbilityFilter>('ALL');
+  const [blockFilter, setBlockFilter] = useState<BlockFilter>('ALL');
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      bodyScrollRef.current?.scrollTo({ top: 0 });
+    if (isOpen && bodyScrollRef.current) {
+      bodyScrollRef.current.scrollTop = 0;
     }
-  }, [isOpen]);
+    if (!isOpen) return;
+    const win = window as unknown as { __estratoCloseGuide?: () => boolean };
+    win.__estratoCloseGuide = () => {
+      onClose();
+      return true;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      delete win.__estratoCloseGuide;
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -396,14 +443,21 @@ export const TacticalGuideModal: React.FC<TacticalGuideModalProps> = ({
     { id: 'MOVEMENT', label: 'Movimiento' },
     { id: 'COUNTER', label: 'Parry' },
     { id: 'ABILITIES', label: 'Habilidades' },
-    { id: 'BLOCKS', label: 'Bloques (26)' },
+    { id: 'BLOCKS', label: `Bloques (${MINERAL_SPECS.length})` },
   ];
 
   const tabIndex = Math.max(0, tabs.findIndex((t) => t.id === tab));
   const selectTab = (nextId: GuideTab) => {
     soundEngine.playUiClick();
     setTab(nextId);
-    bodyScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    if (bodyScrollRef.current) {
+      bodyScrollRef.current.scrollTop = 0;
+    }
+  };
+
+  const scrollBodyBy = (delta: number) => {
+    soundEngine.playUiClick();
+    bodyScrollRef.current?.scrollBy({ top: delta, behavior: 'smooth' });
   };
 
   const kb = keyBindings;
@@ -412,26 +466,59 @@ export const TacticalGuideModal: React.FC<TacticalGuideModalProps> = ({
   const dashKey = kb ? formatActionKeys(kb, 'dash') : 'C / Shift';
   const odKey = kb ? formatActionKeys(kb, 'overdrive') : 'X';
 
+  const filteredBlocks = MINERAL_SPECS.filter((sp) => {
+    if (blockFilter === 'ALL') return true;
+    if (blockFilter === 'BASIC') return BASIC_BLOCK_KINDS.has(sp.kind);
+    if (blockFilter === 'HAZARD') return HAZARD_BLOCK_KINDS.has(sp.kind);
+    return !BASIC_BLOCK_KINDS.has(sp.kind) && !HAZARD_BLOCK_KINDS.has(sp.kind);
+  });
+
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/88 backdrop-blur-sm p-2 sm:p-4"
+      className="fixed inset-0 bg-black/90 backdrop-blur-sm"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: 'max(42px, calc(env(safe-area-inset-top, 0px) + 14px))',
+        paddingBottom: 'max(52px, calc(env(safe-area-inset-bottom, 0px) + 14px))',
+        paddingLeft: '10px',
+        paddingRight: '10px',
+      }}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-3xl max-h-[92dvh] flex flex-col pixel-panel bg-[#12131A] border-2 border-[#38BDF8] overflow-hidden shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Manual Táctico e Interfaz ESTRATO"
+        className="w-full max-w-2xl pixel-panel bg-[#12131A] border-2 border-[#38BDF8] shadow-2xl"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: '100%',
+          height: '100%',
+          maxHeight: '720px',
+          overflow: 'hidden',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Fixed Non-Shrinking Top Header & Tab Bar */}
-        <div className="shrink-0 px-3.5 sm:px-5 pt-3.5 pb-2.5 border-b-2 border-[#232530] bg-[#141620] space-y-2.5">
+        {/* Pinned Top Header + 6-Tab Selector */}
+        <div
+          className="px-3.5 sm:px-5 pt-3 pb-2.5 border-b-2 border-[#232530] bg-[#141620] space-y-2.5"
+          style={{ flexShrink: 0 }}
+        >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <BookOpen className="w-5 h-5 text-[#38BDF8] shrink-0" />
+              <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-[#38BDF8] shrink-0" />
               <div className="min-w-0">
-                <h2 className="font-display text-lg sm:text-2xl font-bold text-white leading-tight">
-                  Manual Táctico e Interfaz · ESTRATO
+                <h2 className="font-display text-base sm:text-xl font-bold text-white leading-tight">
+                  Manual Táctico · ESTRATO
                 </h2>
                 <p className="text-[11px] text-[#8E92A4] leading-snug">
-                  Concepto completo, leyenda del HUD, habilidades de operadores y los {MINERAL_SPECS.length} bloques del abismo.
+                  Guía completa de HUD, mecánicas, operadores y los {MINERAL_SPECS.length} bloques.
                 </p>
               </div>
             </div>
@@ -442,9 +529,10 @@ export const TacticalGuideModal: React.FC<TacticalGuideModalProps> = ({
                 onClose();
               }}
               aria-label="Cerrar manual"
-              className="pixel-btn p-1.5 text-[#A1A1AA] hover:text-white cursor-pointer shrink-0"
+              className="pixel-btn px-2.5 py-1.5 text-[10px] font-pixel text-[#F43F5E] hover:text-white cursor-pointer shrink-0 flex items-center gap-1"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
+              <span>CERRAR</span>
             </button>
           </div>
 
@@ -454,7 +542,7 @@ export const TacticalGuideModal: React.FC<TacticalGuideModalProps> = ({
                 key={t.id}
                 type="button"
                 onClick={() => selectTab(t.id)}
-                className={`py-2 px-1.5 font-pixel text-[8px] sm:text-[9px] border-2 cursor-pointer transition-colors ${
+                className={`py-2 px-1 font-pixel text-[8px] sm:text-[9px] border-2 cursor-pointer transition-colors ${
                   tab === t.id
                     ? 'border-[#38BDF8] bg-[#0F1B26] text-white'
                     : 'border-[#232530] bg-[#161720] text-[#8E92A4] hover:text-white'
@@ -466,11 +554,19 @@ export const TacticalGuideModal: React.FC<TacticalGuideModalProps> = ({
           </div>
         </div>
 
-        {/* Dedicated Single Scrollable Body */}
+        {/* Dedicated Bulletproof Single Scroll Container */}
         <div
           ref={bodyScrollRef}
           className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3.5 sm:px-5 py-3.5 space-y-3.5"
-          style={{ WebkitOverflowScrolling: 'touch' }}
+          style={{
+            flex: '1 1 0%',
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            WebkitOverflowScrolling: 'touch',
+            touchAction: 'pan-y',
+            overscrollBehavior: 'contain',
+          }}
         >
           <GuideDioramaCanvas tab={tab} />
 
@@ -600,74 +696,139 @@ export const TacticalGuideModal: React.FC<TacticalGuideModalProps> = ({
 
           {tab === 'ABILITIES' && (
             <div className="space-y-3 text-xs text-[#E4E4E7] leading-relaxed">
-              <div className="flex items-center gap-1.5 font-pixel text-[10px] text-[#38BDF8]">
-                <UserCheck className="w-3.5 h-3.5 shrink-0" />
-                TODOS LOS OPERADORES (PASIVA · ✦ RESONANCIA · ◈ TÁCTICA)
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {CHASSIS_LIST.map((ch) => (
-                  <div key={ch.id} className="p-3 bg-[#0E1017] border border-[#232530] space-y-1">
-                    <div className="flex flex-wrap items-center justify-between gap-1.5">
-                      <span className="font-display text-base font-bold text-white">{ch.callsign}</span>
-                      <span
-                        className="font-pixel text-[8px] px-1.5 py-0.5 border"
-                        style={{ color: ch.accentColor, borderColor: `${ch.accentColor}66` }}
-                      >
-                        {ch.code} · {ch.role.split(' ')[0]}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-[#D4D4D8]">
-                      <strong className="text-[#94A3B8]">Pasiva:</strong> {ch.traitTitle} — {ch.traitDesc}
-                    </div>
-                    <div className="text-[11px] text-[#BAE6FD]">
-                      <strong style={{ color: ch.accentColor }}>✦ {ch.signatureName}:</strong> {ch.signatureDesc}
-                    </div>
-                    <div className="text-[11px] text-[#BEF264]">
-                      <strong className="text-[#A3E635]">◈ {ch.tacticalName}:</strong> {ch.tacticalDesc}
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {(
+                  [
+                    ['ALL', 'Todo'],
+                    ['OPERATORS', `Operadores (${CHASSIS_LIST.length})`],
+                    ['GADGETS', `Gadgets (${GADGETS.length})`],
+                    ['SYNERGIES', 'Sinergias'],
+                  ] as [AbilityFilter, string][]
+                ).map(([fid, label]) => (
+                  <button
+                    key={fid}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick();
+                      setAbilityFilter(fid);
+                    }}
+                    className={`py-1.5 px-2 font-pixel text-[8px] border cursor-pointer ${
+                      abilityFilter === fid
+                        ? 'border-[#FACC15] bg-[#1E1A0E] text-[#FACC15]'
+                        : 'border-[#232530] bg-[#151720] text-[#A1A1AA] hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
 
-              <div className="flex items-center gap-1.5 font-pixel text-[10px] text-[#FACC15] pt-2 border-t border-[#232530]">
-                <Shield className="w-3.5 h-3.5 shrink-0" />
-                CINTURÓN DE GADGETS CONSUMIBLES [TECLAS 1 · 2 · 3]
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                {GADGETS.map((g) => (
-                  <div key={g.id} className="p-2.5 bg-[#0E1017] border border-[#232530] flex items-start gap-2.5">
-                    <span className="text-base leading-none shrink-0" style={{ color: g.color }}>{g.glyph}</span>
-                    <div className="min-w-0">
-                      <div className="font-bold text-white">{g.name}</div>
-                      <div className="text-[#A1A1AA]">{g.desc}</div>
-                    </div>
+              {(abilityFilter === 'ALL' || abilityFilter === 'OPERATORS') && (
+                <>
+                  <div className="flex items-center gap-1.5 font-pixel text-[10px] text-[#38BDF8]">
+                    <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                    OPERADORES (PASIVA · ✦ RESONANCIA · ◈ TÁCTICA)
                   </div>
-                ))}
-              </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {CHASSIS_LIST.map((ch) => (
+                      <div key={ch.id} className="p-3 bg-[#0E1017] border border-[#232530] space-y-1">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                          <span className="font-display text-base font-bold text-white">{ch.callsign}</span>
+                          <span
+                            className="font-pixel text-[8px] px-1.5 py-0.5 border"
+                            style={{ color: ch.accentColor, borderColor: `${ch.accentColor}66` }}
+                          >
+                            {ch.code} · {ch.role}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#D4D4D8]">
+                          <strong className="text-[#94A3B8]">Pasiva:</strong> {ch.traitTitle} — {ch.traitDesc}
+                        </div>
+                        <div className="text-[11px] text-[#BAE6FD]">
+                          <strong style={{ color: ch.accentColor }}>✦ {ch.signatureName}:</strong> {ch.signatureDesc}
+                        </div>
+                        <div className="text-[11px] text-[#BEF264]">
+                          <strong className="text-[#A3E635]">◈ {ch.tacticalName}:</strong> {ch.tacticalDesc}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
 
-              <div className="p-3 bg-[#12101D] border border-[#C084FC]/40 text-[11px] flex items-start gap-2">
-                <Sparkles className="w-4 h-4 text-[#C084FC] shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-[#E9D5FF]">SINERGIAS DE ARQUETIPO (2 / 4 / 6 Módulos):</strong> reunir varios módulos de un mismo arquetipo en Cámaras de Brecha (250m / 750m / 1250m) desbloquea bonos de conjunto: explosiones mayores (Pyro), freno de drenaje O₂ (Cryo), alcance de permuta +2 (Cuántico), blindaje sísmico (Balístico) o saqueo de isótopos (Parásito).
+              {(abilityFilter === 'ALL' || abilityFilter === 'GADGETS') && (
+                <>
+                  <div className="flex items-center gap-1.5 font-pixel text-[10px] text-[#FACC15] pt-1 border-t border-[#232530]">
+                    <Shield className="w-3.5 h-3.5 shrink-0" />
+                    CINTURÓN DE GADGETS CONSUMIBLES [TECLAS 1 · 2 · 3]
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                    {GADGETS.map((g) => (
+                      <div key={g.id} className="p-2.5 bg-[#0E1017] border border-[#232530] flex items-start gap-2.5">
+                        <span className="text-base leading-none shrink-0" style={{ color: g.color }}>{g.glyph}</span>
+                        <div className="min-w-0">
+                          <div className="font-bold text-white">{g.name}</div>
+                          <div className="text-[#A1A1AA]">{g.desc}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {(abilityFilter === 'ALL' || abilityFilter === 'SYNERGIES') && (
+                <div className="p-3 bg-[#12101D] border border-[#C084FC]/40 text-[11px] flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-[#C084FC] shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-[#E9D5FF]">SINERGIAS DE ARQUETIPO (2 / 4 / 6 Módulos):</strong> reunir varios módulos de un mismo arquetipo en Cámaras de Brecha (250m / 750m / 1250m) desbloquea bonos de conjunto: explosiones mayores (Pyro), freno de drenaje O₂ (Cryo), alcance de permuta +2 (Cuántico), blindaje sísmico (Balístico) o saqueo de isótopos (Parásito).
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
           {tab === 'BLOCKS' && (
             <div className="space-y-3 text-xs text-[#E4E4E7] leading-relaxed">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {(
+                  [
+                    ['ALL', `Todos (${MINERAL_SPECS.length})`],
+                    ['BASIC', 'Básicos / Color'],
+                    ['TACTICAL', 'Tácticos / Botín'],
+                    ['HAZARD', 'Peligros / Nodos'],
+                  ] as [BlockFilter, string][]
+                ).map(([bf, label]) => (
+                  <button
+                    key={bf}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick();
+                      setBlockFilter(bf);
+                    }}
+                    className={`py-1.5 px-2 font-pixel text-[8px] border cursor-pointer ${
+                      blockFilter === bf
+                        ? 'border-[#FACC15] bg-[#1E1A0E] text-[#FACC15]'
+                        : 'border-[#232530] bg-[#151720] text-[#A1A1AA] hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-[#A1A1AA]">
                 <span className="flex items-center gap-1.5 font-pixel text-[#FACC15]">
                   <Layers className="w-3.5 h-3.5 shrink-0" />
-                  ESPECTRO COMPLETO DE {MINERAL_SPECS.length} BLOQUES
+                  MOSTRANDO {filteredBlocks.length} DE {MINERAL_SPECS.length} BLOQUES
                 </span>
                 <span className="flex items-center gap-1 font-mono">
                   <Terminal className="w-3 h-3 text-[#38BDF8] shrink-0" />
                   Q/E o arrastre funciona con casi todos
                 </span>
               </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]">
-                {MINERAL_SPECS.map((sp) => (
+                {filteredBlocks.map((sp) => (
                   <div key={sp.kind} className="p-2.5 bg-[#0E1017] border border-[#232530] flex items-start gap-2.5">
                     <BlockGuideThumb kind={sp.kind} size={36} />
                     <div className="min-w-0 flex-1 space-y-0.5">
@@ -685,28 +846,45 @@ export const TacticalGuideModal: React.FC<TacticalGuideModalProps> = ({
           )}
         </div>
 
-        {/* Sticky Bottom Footer with Section Pager & Close */}
-        <div className="shrink-0 px-3.5 sm:px-5 py-2.5 border-t-2 border-[#232530] bg-[#141620] flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 shrink-0">
+        {/* Pinned Bottom Footer with Scroll Controls, Section Pager & Close */}
+        <div
+          className="px-3 sm:px-5 py-2.5 border-t-2 border-[#232530] bg-[#141620] flex items-center justify-between gap-1.5"
+          style={{ flexShrink: 0 }}
+        >
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               disabled={tabIndex <= 0}
               onClick={() => tabIndex > 0 && selectTab(tabs[tabIndex - 1].id)}
               aria-label="Sección anterior"
-              className="pixel-btn px-2.5 py-2 font-pixel text-[9px] text-[#D4D4D8] disabled:opacity-40 cursor-pointer flex items-center gap-1"
+              className="pixel-btn p-2 font-pixel text-[9px] text-[#D4D4D8] disabled:opacity-35 cursor-pointer flex items-center gap-0.5"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Anterior</span>
             </button>
             <button
               type="button"
               disabled={tabIndex >= tabs.length - 1}
               onClick={() => tabIndex < tabs.length - 1 && selectTab(tabs[tabIndex + 1].id)}
               aria-label="Siguiente sección"
-              className="pixel-btn px-2.5 py-2 font-pixel text-[9px] text-[#38BDF8] disabled:opacity-40 cursor-pointer flex items-center gap-1"
+              className="pixel-btn p-2 font-pixel text-[9px] text-[#38BDF8] disabled:opacity-35 cursor-pointer flex items-center gap-0.5"
             >
-              <span className="hidden sm:inline">Siguiente</span>
               <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollBodyBy(-220)}
+              aria-label="Subir texto"
+              className="pixel-btn p-2 font-pixel text-[9px] text-[#A1A1AA] hover:text-white cursor-pointer"
+            >
+              <ArrowUp className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollBodyBy(220)}
+              aria-label="Bajar texto"
+              className="pixel-btn p-2 font-pixel text-[9px] text-[#A1A1AA] hover:text-white cursor-pointer"
+            >
+              <ArrowDown className="w-3.5 h-3.5" />
             </button>
           </div>
 
