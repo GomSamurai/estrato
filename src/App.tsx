@@ -246,7 +246,6 @@ export default function App() {
         setArchiveInitialTab('ARTIFACTS');
         setScreen('ARCHIVE');
       }}
-      onReplayIntro={() => setScreen('INTRO')}
     />
   );
 }

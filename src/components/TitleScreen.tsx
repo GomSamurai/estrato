@@ -96,7 +96,6 @@ interface TitleScreenProps {
   onOpenArchive: () => void;
   onOpenCharacters: () => void;
   onOpenArtifacts?: () => void;
-  onReplayIntro?: () => void;
 }
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
@@ -128,7 +127,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenArchive,
   onOpenCharacters,
   onOpenArtifacts,
-  onReplayIntro,
 }) => {
   const [controlsModalSection, setControlsModalSection] = useState<'KEYBOARD' | 'MOBILE' | null>(null);
   const [showGuide, setShowGuide] = useState(false);
@@ -215,7 +213,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       </div>
 
       {/* Strict 3-Zone Top Bar */}
-      <header className="h-14 px-4 sm:px-6 border-b-2 border-[#262834] bg-[#12131A] flex items-center justify-between gap-4 shrink-0">
+      <header className="h-14 px-4 sm:px-6 border-b-2 border-[#262834] bg-[#12131A] flex items-center justify-between gap-3 shrink-0 min-w-0 overflow-hidden">
         <div className="flex items-center gap-3 whitespace-nowrap shrink-0">
           <div className="px-2 py-0.5 bg-[#D94126] border border-[#F97316] font-pixel text-sm font-bold tracking-widest text-white shadow-[0_2px_0_#7F1D1D]">
             ESTRATO
@@ -225,7 +223,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </span>
         </div>
 
-        <nav className="hidden lg:flex items-center gap-6 text-xs font-pixel tracking-wide text-[#A1A1AA] min-w-0">
+        <nav className="hidden lg:flex items-center gap-4 xl:gap-6 text-xs font-pixel tracking-wide text-[#A1A1AA] min-w-0 overflow-hidden">
           <button
             onClick={withClick(() => onSelectMode('CAMPAIGN'))}
             className={`hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
@@ -274,22 +272,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </button>
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {onReplayIntro && (
-            <button
-              type="button"
-              onClick={withClick(onReplayIntro)}
-              title="Ver cinemática introductoria de lore"
-              className="pixel-btn px-2.5 py-1.5 text-[11px] font-pixel text-[#FACC15] hover:text-white cursor-pointer whitespace-nowrap"
-            >
-              Intro
-            </button>
-          )}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           <button
             type="button"
             onClick={withClick(() => setShowGuide(true))}
             title="Manual Táctico Animado: controles, contraataque, habilidades y bloques"
-            className="pixel-btn px-2.5 py-1.5 text-[11px] font-pixel text-[#A3E635] hover:text-white flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            className="pixel-btn px-2.5 py-1.5 text-[11px] font-pixel text-[#A3E635] hover:text-white flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
           >
             <BookOpen className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Guía</span>
@@ -298,7 +286,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             type="button"
             onClick={withClick(() => setControlsModalSection('KEYBOARD'))}
             title="Editor de Teclas y Controles Táctiles"
-            className="pixel-btn px-2.5 py-1.5 text-[11px] font-pixel text-[#D4D4D8] hover:text-white flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            className="pixel-btn px-2.5 py-1.5 text-[11px] font-pixel text-[#D4D4D8] hover:text-white flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
           >
             <Keyboard className="w-3.5 h-3.5 text-[#38BDF8]" />
             <span className="hidden sm:inline">Teclas / Móvil</span>
@@ -309,7 +297,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               soundEngine.playUiClick();
             }}
             aria-label={soundEnabled ? 'Silenciar audio' : 'Activar audio'}
-            className="pixel-btn p-2 text-[#A1A1AA] hover:text-white cursor-pointer"
+            className="pixel-btn p-2 text-[#A1A1AA] hover:text-white cursor-pointer shrink-0"
           >
             {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>

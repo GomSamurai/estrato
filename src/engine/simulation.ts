@@ -1249,6 +1249,16 @@ export class EstratoSimulation {
       row = Array.from({ length: GRID_COLS }, () => makeEmptyCell());
       this.grid.set(r, row);
     }
+    const prev = row[c];
+    if (prev && prev !== cell && cell.state === 'EMPTY') {
+      prev.state = 'EMPTY';
+      prev.kind = 'EMPTY';
+      prev.color = -1;
+      prev.hp = 0;
+      prev.fallOffset = 0;
+      prev.fallDistance = 0;
+      prev.wobbleTimer = 0;
+    }
     row[c] = cell;
   }
 
@@ -4695,7 +4705,8 @@ export class EstratoSimulation {
         let pulledO2 = 0;
         for (let rr = Math.max(this.minPrunedRow, pRow - 4); rr <= pRow + 4; rr++) {
           for (let cc = 0; cc < GRID_COLS; cc++) {
-            if (this.getCell(rr, cc).kind === 'OXYGEN') {
+            const qCell = this.getCell(rr, cc);
+            if (qCell.kind === 'OXYGEN' && qCell.state !== 'EMPTY' && qCell.state !== 'DETONATING') {
               this.collectOxygenCapsule(rr, cc);
               pulledO2++;
             }
@@ -4754,12 +4765,14 @@ export class EstratoSimulation {
       }
       case 'MKII_ESPECTRO': {
         const oppCol = GRID_COLS - 1 - pCol;
-        const c1 = this.getCell(pRow + 1, pCol);
-        const c2 = this.getCell(pRow + 1, oppCol);
-        if (isSwappableKind(c1.kind) && isSwappableKind(c2.kind)) {
-          this.setCell(pRow + 1, pCol, c2);
-          this.setCell(pRow + 1, oppCol, c1);
-          this.fx.spawnSwapTrail(pRow + 1, pCol, pRow + 1, oppCol, '#38BDF8', '#A78BFA');
+        if (oppCol !== pCol) {
+          const c1 = this.getCell(pRow + 1, pCol);
+          const c2 = this.getCell(pRow + 1, oppCol);
+          if (isSwappableKind(c1.kind) && isSwappableKind(c2.kind)) {
+            this.setCell(pRow + 1, pCol, { ...c2, fallOffset: 0, fallDistance: 0 });
+            this.setCell(pRow + 1, oppCol, { ...c1, fallOffset: 0, fallDistance: 0 });
+            this.fx.spawnSwapTrail(pRow + 1, pCol, pRow + 1, oppCol, '#38BDF8', '#A78BFA');
+          }
         }
         this.invulnTimer = Math.max(this.invulnTimer, 72);
         this.addFloatingText(this.px + 0.5, this.py - 1.3, 'CAMBIO FANTASMA!', 'ESPEJO · 1,2s INVULN', def.accentColor);
@@ -4890,6 +4903,10 @@ export class EstratoSimulation {
   }
 
   private collectOxygenCapsule(r: number, c: number): void {
+    const target = this.getCell(r, c);
+    if (target.state === 'EMPTY' || target.state === 'DETONATING' || target.kind !== 'OXYGEN') {
+      return;
+    }
     this.setCell(r, c, makeEmptyCell());
     this.recordMineralStats('OXYGEN', r);
     this.o2CapsulesCollected++;
@@ -4981,8 +4998,8 @@ export class EstratoSimulation {
     const col2 = cell2.color >= 0 ? stratum.blockColors[cell2.color] : '#38BDF8';
 
     // Swap positions in grid
-    const next1 = { ...cell2 };
-    const next2 = { ...cell1 };
+    const next1 = { ...cell2, fallOffset: 0, fallDistance: 0 };
+    const next2 = { ...cell1, fallOffset: 0, fallDistance: 0 };
 
     if (next1.state !== 'EMPTY') {
       next1.swapFromCol = c2;
@@ -5322,13 +5339,15 @@ export class EstratoSimulation {
           }
           if (this.frameCount % 12 === 0) {
             const pullR = this.hasModule('QUA_GRAV_INVERT') ? 3 : 1;
+            const movedO2 = new Set<number>();
             for (let gc = Math.max(0, c - pullR); gc <= Math.min(GRID_COLS - 1, c + pullR); gc++) {
               if (gc === c) continue;
               const nb = this.getCell(r, gc);
-              if (nb.kind === 'OXYGEN' && nb.state === 'SOLID') {
+              if (nb.kind === 'OXYGEN' && nb.state === 'SOLID' && !movedO2.has(nb.id)) {
                 const step = gc < c ? 1 : -1;
                 if (this.getCell(r, gc + step).state === 'EMPTY') {
-                  this.setCell(r, gc + step, nb);
+                  movedO2.add(nb.id);
+                  this.setCell(r, gc + step, { ...nb, fallOffset: 0, fallDistance: 0 });
                   this.setCell(r, gc, makeEmptyCell());
                 }
               }
@@ -5431,6 +5450,8 @@ export class EstratoSimulation {
         if (emberIdx >= 0 && cell.kind === 'SOLID') {
           this.emberCells.splice(emberIdx, 1);
           cell.state = 'IGNITING';
+          cell.fallOffset = 0;
+          cell.fallDistance = 0;
           cell.chainLevel = this.hasModuleMk2('PYRO_EMBER') ? 2 : 1;
           cell.fuseMax = IGNITE_FUSE_FRAMES[0];
           cell.fuseTimer = cell.fuseMax;
@@ -5472,19 +5493,20 @@ export class EstratoSimulation {
             const nextR = r + 1;
             const targetBelow = this.getCell(nextR, c);
             if (targetBelow.state === 'EMPTY' && !(this.activeGuardian && nextR >= this.activeGuardian.arenaRow)) {
-              this.setCell(nextR, c, cell);
-              this.setCell(r, c, makeEmptyCell());
               cell.fallOffset -= 1;
               cell.fallDistance += 1;
+              const movedCell: Cell = { ...cell };
+              this.setCell(nextR, c, movedCell);
+              this.setCell(r, c, makeEmptyCell());
 
               // Check direct head impact after moving down
-              if (c === pCol && nextR === pRow && cell.kind !== 'OXYGEN' && this.coyoteCrushTimer === 0 && this.invulnTimer === 0) {
+              if (c === pCol && nextR === pRow && movedCell.kind !== 'OXYGEN' && this.coyoteCrushTimer === 0 && this.invulnTimer === 0) {
                 if (
                   this.overheadGuardTimer > 0 &&
-                  cell.kind !== 'RIVET' &&
-                  cell.kind !== 'MONOLITH' &&
-                  cell.kind !== 'BREACH_SEAL' &&
-                  cell.kind !== 'BIFURCATION_SEAL'
+                  movedCell.kind !== 'RIVET' &&
+                  movedCell.kind !== 'MONOLITH' &&
+                  movedCell.kind !== 'BREACH_SEAL' &&
+                  movedCell.kind !== 'BIFURCATION_SEAL'
                 ) {
                   this.overheadGuardTimer = 0;
                   const o2Cost = this.overdriveTimer > 0 ? 0 : this.hasModule('BAL_OVERHEAD_BREAKER') ? 3 : 6;
@@ -5530,14 +5552,16 @@ export class EstratoSimulation {
     // 5. Update Telekinetic O2 Attraction (QUA_TELE)
     if (this.hasModule('QUA_TELE')) {
       const range = this.hasModuleMk2('QUA_TELE') ? 2 : 0;
+      const movedTeleO2 = new Set<number>();
       for (let dr = -range; dr <= range; dr++) {
         const rr = pRow + dr;
         for (let c = 0; c < GRID_COLS; c++) {
           const cell = this.getCell(rr, c);
-          if (cell.kind === 'OXYGEN' && cell.state === 'SOLID' && c !== pCol) {
+          if (cell.kind === 'OXYGEN' && cell.state === 'SOLID' && c !== pCol && !movedTeleO2.has(cell.id)) {
             const step = c < pCol ? 1 : -1;
             if (this.getCell(rr, c + step).state === 'EMPTY' && this.frameCount % 8 === 0) {
-              this.setCell(rr, c + step, cell);
+              movedTeleO2.add(cell.id);
+              this.setCell(rr, c + step, { ...cell, fallOffset: 0, fallDistance: 0 });
               this.setCell(rr, c, makeEmptyCell());
             }
           }
@@ -5585,16 +5609,34 @@ export class EstratoSimulation {
     slamHeld: boolean
   ): void {
     // 1. O2 capsule crushed by falling block!
-    if (below.kind === 'OXYGEN' && !this.hasModuleMk2('QUA_TELE')) {
+    if (below.kind === 'OXYGEN' && falling.kind !== 'OXYGEN' && !this.hasModuleMk2('QUA_TELE')) {
       this.setCell(belowR, belowC, makeEmptyCell());
       this.spawnParticles(belowC + 0.5, belowR + 0.5, '#38BDF8', 10);
       this.addFloatingText(belowC + 0.5, belowR, 'O₂ DESTRUIDA', undefined, '#EF4444');
+      const crushedAdvance: Cell = {
+        ...falling,
+        fallOffset: 0,
+        fallDistance: falling.fallDistance + 1,
+      };
+      this.setCell(r, c, makeEmptyCell());
+      const underCrushed = this.getCell(belowR + 1, belowC);
+      const blockedUnder = Boolean(this.activeGuardian && belowR + 1 >= this.activeGuardian.arenaRow);
+      if (underCrushed.state === 'EMPTY' && !blockedUnder) {
+        crushedAdvance.state = 'FALLING';
+      } else {
+        crushedAdvance.state = 'SOLID';
+        crushedAdvance.fallDistance = 0;
+        crushedAdvance.wobbleTimer = 0;
+      }
+      this.setCell(belowR, belowC, crushedAdvance);
+      return;
     }
 
     // 2. Martillo de Vacío (BAL_HAMMER): Slam + fell 3+ rows drills block underneath
     if (
       slamHeld &&
       this.hasModule('BAL_HAMMER') &&
+      falling.kind !== 'OXYGEN' &&
       falling.fallDistance >= 3 &&
       below.kind !== 'RIVET' &&
       below.kind !== 'MONOLITH' &&
@@ -5618,9 +5660,17 @@ export class EstratoSimulation {
       this.setCell(belowR, belowC, makeEmptyCell());
       soundEngine.playSteamHiss(belowC);
       this.fx.spawnCellularBurst(belowC + 0.5, belowR + 0.5, 'STEAM', '#BAE6FD', 10, 0.1);
-      falling.state = 'FALLING';
-      falling.fallOffset = 0;
-      falling.fallDistance = 0;
+      const movedAfterValve: Cell = {
+        ...falling,
+        fallOffset: 0,
+        fallDistance: 0,
+      };
+      this.setCell(r, c, makeEmptyCell());
+      const underValve = this.getCell(belowR + 1, belowC);
+      const blockedUnder = Boolean(this.activeGuardian && belowR + 1 >= this.activeGuardian.arenaRow);
+      movedAfterValve.state = underValve.state === 'EMPTY' && !blockedUnder ? 'FALLING' : 'SOLID';
+      if (movedAfterValve.state === 'SOLID') movedAfterValve.wobbleTimer = 0;
+      this.setCell(belowR, belowC, movedAfterValve);
       return;
     }
 
@@ -5679,10 +5729,12 @@ export class EstratoSimulation {
     }
 
     // 3. Impact on IGNITING block -> Feed or Thermal Dud!
-    if (below.state === 'IGNITING') {
+    if (below.state === 'IGNITING' && falling.kind !== 'OXYGEN') {
       if (falling.kind === 'SOLID' && falling.color === below.color) {
         // Feed the flame!
         falling.state = 'IGNITING';
+        falling.fallOffset = 0;
+        falling.fallDistance = 0;
         falling.chainLevel = below.chainLevel + 1;
         this.applyFuseCurve(falling);
         this.setIgnitionGroupChain(belowR, belowC, falling.chainLevel);
