@@ -47,6 +47,7 @@ import {
   claimContractReward,
   craftGadget,
   craftRelic,
+  getBestDepth,
   getChallengeProgressValue,
   getMaxBeltSlots,
   getMaxRelicSlots,
@@ -77,8 +78,10 @@ import {
   getMineralBlockSprite,
   getOxygenPodSprite,
   getPhaseBlockSprite,
+  getResonanceVeinBlockSprite,
   getShockMineBlockSprite,
   getSlagBlockSprite,
+  getSupportBeamBlockSprite,
   getTreasureCacheBlockSprite,
 } from '../engine/pixelArt';
 import { soundEngine } from '../engine/audio';
@@ -282,6 +285,8 @@ const MineralSpriteThumb: React.FC<{
           else if (kind === 'MAGMA_NODE') spr = getMagmaNodeBlockSprite(f);
           else if (kind === 'GRAVEL') spr = getGravelBlockSprite(0);
           else if (kind === 'BOUNCE_PAD') spr = getBouncePadBlockSprite(f, false);
+          else if (kind === 'RESONANCE_VEIN') spr = getResonanceVeinBlockSprite(f);
+          else if (kind === 'SUPPORT_BEAM') spr = getSupportBeamBlockSprite(f);
           else if (kind === 'GAS_POCKET') spr = getGasPocketBlockSprite(f);
           else if (kind === 'ACID_VAT') spr = getAcidVatBlockSprite(f);
           else if (kind === 'GRAV_WELL') spr = getGravWellBlockSprite(f);
@@ -494,7 +499,9 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
 
   const buyRigUpgrade = (key: keyof RigUpgrades, cost: number) => {
     const curTier = rigUpgrades[key] || 0;
-    if (curTier >= 5 || archive.isotopes < cost) return;
+    const upgDef = RIG_UPGRADES.find((u) => u.key === key);
+    const reqDepth = upgDef ? (upgDef.minDepths?.[curTier] ?? 0) : 0;
+    if (curTier >= 5 || getBestDepth(archive) < reqDepth || archive.isotopes < cost) return;
     soundEngine.init();
     soundEngine.playSeismicSeal();
     commit({
@@ -541,7 +548,9 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
   };
 
   const unlockModule = (id: string, cost: number) => {
-    if (archive.isotopes < cost || archive.unlockedModules.includes(id)) return;
+    const modDef = MODULES.find((m) => m.id === id);
+    const reqDepth = modDef?.minDepth ?? 0;
+    if (getBestDepth(archive) < reqDepth || archive.isotopes < cost || archive.unlockedModules.includes(id)) return;
     soundEngine.init();
     soundEngine.playSeismicSeal();
     commit({
@@ -775,7 +784,9 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                     const tier = Math.min(5, rigUpgrades[upg.key] || 0);
                     const maxed = tier >= 5;
                     const nextCost = maxed ? 0 : upg.costs[tier];
-                    const canAfford = !maxed && archive.isotopes >= nextCost;
+                    const reqDepth = maxed ? 0 : (upg.minDepths?.[tier] ?? 0);
+                    const depthOk = getBestDepth(archive) >= reqDepth;
+                    const canAfford = !maxed && depthOk && archive.isotopes >= nextCost;
                     const curInfo = upg.tiers[tier];
                     const nextInfo = !maxed ? upg.tiers[tier + 1] : null;
 
@@ -828,7 +839,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                                   : 'bg-[#20222C] border-2 border-[#2B2D38] text-[#71717A] cursor-not-allowed'
                               }`}
                             >
-                              MEJORAR
+                              {!depthOk ? `REQ. ${reqDepth}M` : 'MEJORAR'}
                             </button>
                           )}
                         </div>
@@ -914,6 +925,8 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                       archive.isotopes >= rel.isoCost &&
                       canAffordMaterials(archive.materials, rel.matCost);
 
+                    const relDepthOk = getBestDepth(archive) >= (rel.minDepth ?? 0);
+                    const canForgeRel = canAfford && relDepthOk;
                     return (
                       <div
                         key={rel.id}
@@ -955,7 +968,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                             </button>
                           ) : (
                             <button
-                              disabled={!canAfford}
+                              disabled={!canForgeRel}
                               onClick={() => {
                                 soundEngine.init();
                                 const next = craftRelic(archive, rel.id);
@@ -965,12 +978,12 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                                 }
                               }}
                               className={`w-full py-1.5 font-pixel text-[10px] font-bold cursor-pointer ${
-                                canAfford
+                                canForgeRel
                                   ? 'pixel-btn-primary text-white'
                                   : 'bg-[#20222C] border-2 border-[#2B2D38] text-[#71717A] cursor-not-allowed'
                               }`}
                             >
-                              FORJAR · {rel.isoCost} ISO
+                              {!relDepthOk ? `REQ. ${rel.minDepth}m · FORJAR` : `FORJAR · ${rel.isoCost} ISO`}
                             </button>
                           )}
                         </div>
@@ -1021,8 +1034,10 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {GADGETS.map((gad) => {
                     const owned = archive.gadgetInventory[gad.id] || 0;
+                    const gadDepthOk = getBestDepth(archive) >= (gad.minDepth ?? 0);
                     const canAfford =
                       owned < gad.maxStack &&
+                      gadDepthOk &&
                       archive.isotopes >= gad.isoCost &&
                       canAffordMaterials(archive.materials, gad.matCost);
                     const equippedInPicker = archive.equippedBelt[activeBeltPicker] === gad.id;
@@ -1061,7 +1076,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                                   : 'bg-[#20222C] border-2 border-[#2B2D38] text-[#71717A] cursor-not-allowed'
                               }`}
                             >
-                              CREAR · {gad.isoCost} ISO
+                              {!gadDepthOk ? `REQ. ${gad.minDepth}m · CREAR` : `CREAR · ${gad.isoCost} ISO`}
                             </button>
                             {owned > 0 && activeBeltPicker < maxBeltSlots && (
                               <button
@@ -1109,7 +1124,9 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                 {CHASSIS_LIST.map((c) => {
                   const unlocked = archive.unlockedChassis.includes(c.id);
                   const selected = archive.selectedChassis === c.id;
-                  const canBuy = !unlocked && (c.unlockIsoCost ?? 0) > 0 && archive.isotopes >= (c.unlockIsoCost ?? 0);
+                  const reqDepth = c.minDepth ?? 0;
+                  const depthOk = getBestDepth(archive) >= reqDepth;
+                  const canBuy = !unlocked && depthOk && (c.unlockIsoCost ?? 0) > 0 && archive.isotopes >= (c.unlockIsoCost ?? 0);
                   const masteryRec = archive.operatorMastery?.[c.id];
                   const mastery = getOperatorMasteryRank(masteryRec);
                   return (
@@ -1162,6 +1179,14 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                               <span className="text-[#E4E4E7]">{c.signatureDesc}</span>
                             </div>
                           )}
+                          {c.tacticalName && (
+                            <div className="px-2.5 py-1.5 border border-[#A3E635]/35 bg-[#0F1B12]/80 text-xs">
+                              <span className="font-pixel text-[9px] text-[#A3E635] mr-1.5">
+                                ◈ TÁCTICA [G] · {c.tacticalName} ({c.tacticalCooldownSec || 14}s):
+                              </span>
+                              <span className="text-[#E4E4E7]">{c.tacticalDesc}</span>
+                            </div>
+                          )}
                           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-[#A1A1AA] pt-0.5">
                             <span>{c.stats}</span>
                             <span className="text-[#FACC15]">
@@ -1200,7 +1225,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                                 : 'border-[#232530] bg-[#101117] text-[#52525B] cursor-not-allowed'
                             }`}
                           >
-                            DESBLOQUEAR · {c.unlockIsoCost} ISO
+                            {!depthOk ? `REQ. ${reqDepth}m · ${c.unlockIsoCost} ISO` : `DESBLOQUEAR · ${c.unlockIsoCost} ISO`}
                           </button>
                         )}
                       </div>
@@ -1232,7 +1257,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                     desc: 'Amplía el máximo de Reliquias pasivas equipables simultáneamente en expedición (1 → 3).',
                     level: archive.infra.relicSlots || 0,
                     max: 2,
-                    cost: 95 + (archive.infra.relicSlots || 0) * 110,
+                    cost: 170 + (archive.infra.relicSlots || 0) * 200,
                   },
                   {
                     key: 'beltSlots' as const,
@@ -1240,7 +1265,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                     desc: 'Habilita ranuras extra [2] y [3] para llevar más Artilugios activos al subsuelo.',
                     level: archive.infra.beltSlots || 0,
                     max: 2,
-                    cost: 80 + (archive.infra.beltSlots || 0) * 95,
+                    cost: 145 + (archive.infra.beltSlots || 0) * 170,
                   },
                   {
                     key: 'elevatorUnlock' as const,
@@ -1248,7 +1273,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                     desc: 'Permite arrancar la Campaña directamente en cotas de 500m, 1000m, 1500m, 2000m o 2500m con módulos compensatorios.',
                     level: archive.infra.elevatorUnlock || 0,
                     max: 5,
-                    cost: 120 + (archive.infra.elevatorUnlock || 0) * 90,
+                    cost: 215 + (archive.infra.elevatorUnlock || 0) * 165,
                   },
                   {
                     key: 'supplyDrop' as const,
@@ -1256,7 +1281,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                     desc: '+5% de O₂ máximo por nivel y +1 Escudo Cinético de arranque a partir de Nivel 2.',
                     level: archive.infra.supplyDrop || 0,
                     max: 3,
-                    cost: 70 + (archive.infra.supplyDrop || 0) * 65,
+                    cost: 125 + (archive.infra.supplyDrop || 0) * 120,
                   },
                   {
                     key: 'reroll' as const,
@@ -1264,7 +1289,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                     desc: 'Permite pulsar R / Y en una Cámara de Brecha para rotar los 3 módulos ofrecidos.',
                     level: archive.infra.reroll,
                     max: 3,
-                    cost: 65 + archive.infra.reroll * 55,
+                    cost: 115 + archive.infra.reroll * 100,
                   },
                   {
                     key: 'banish' as const,
@@ -1272,7 +1297,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                     desc: 'Permite bloquear hasta 8 módulos del mazo aleatorio para forzar tu arquetipo ideal.',
                     level: archive.infra.banish,
                     max: 3,
-                    cost: 80 + archive.infra.banish * 60,
+                    cost: 145 + archive.infra.banish * 110,
                   },
                   {
                     key: 'initialInjection' as const,
@@ -1280,7 +1305,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                     desc: 'Arranca cada descenso con 1 Módulo aleatorio ya acoplado a los 0 metros.',
                     level: archive.infra.initialInjection,
                     max: 1,
-                    cost: 140,
+                    cost: 250,
                   },
                   {
                     key: 'salvageCapsule' as const,
@@ -1288,7 +1313,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                     desc: 'Genera Tubos de Extracción en el pozo para asegurar el 100% de tus Isótopos.',
                     level: archive.infra.salvageCapsule,
                     max: 1,
-                    cost: 120,
+                    cost: 215,
                   },
                 ].map((item) => {
                   const maxed = item.level >= item.max;
@@ -1389,6 +1414,9 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                       const unlocked = archive.unlockedModules.includes(m.id);
                       const banished = archive.banishedModules.includes(m.id);
                       const cost = m.unlockCost || 0;
+                      const reqDepth = m.minDepth ?? 0;
+                      const modDepthOk = getBestDepth(archive) >= reqDepth;
+                      const canBuyMod = modDepthOk && archive.isotopes >= cost;
                       return (
                         <div
                           key={m.id}
@@ -1410,14 +1438,14 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                             {!unlocked ? (
                               <button
                                 onClick={() => unlockModule(m.id, cost)}
-                                disabled={archive.isotopes < cost}
+                                disabled={!canBuyMod}
                                 className={`w-full py-1.5 font-pixel text-[10px] font-bold cursor-pointer ${
-                                  archive.isotopes >= cost
+                                  canBuyMod
                                     ? 'pixel-btn-primary text-white'
                                     : 'bg-[#20222C] border-2 border-[#2B2D38] text-[#71717A] cursor-not-allowed'
                                 }`}
                               >
-                                DESBLOQUEAR · {cost} ISO
+                                {!modDepthOk ? `REQ. ${reqDepth}m · ${cost} ISO` : `DESBLOQUEAR · ${cost} ISO`}
                               </button>
                             ) : maxBanishAllowed > 0 ? (
                               <button

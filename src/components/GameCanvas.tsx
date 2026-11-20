@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Keyboard, Monitor, Pause, Play, RotateCcw, Smartphone, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, BookOpen, Keyboard, Monitor, Pause, Play, RotateCcw, Smartphone, Volume2, VolumeX } from 'lucide-react';
 import {
   ActiveFeverEvent,
   AimDir,
@@ -38,6 +38,7 @@ import { getArtifactIconSprite, getCharacterPortraitSprite, getMaterialIconSprit
 import { renderSimulation, screenPointToGridCell } from '../engine/renderer';
 import { soundEngine } from '../engine/audio';
 import { ControlsModal } from './ControlsModal';
+import { TacticalGuideModal } from './TacticalGuideModal';
 
 const PortraitCanvas: React.FC<{ speaker: StorySpeaker; frame: number; size?: number }> = ({
   speaker,
@@ -223,6 +224,8 @@ interface HudSnapshot {
   hasIgniting: boolean;
   isFallingPlayer: boolean;
   resonanceCharge: number;
+  tacticalReadyRatio: number;
+  overheadDangerDist: number;
   hasArchitectCrown: boolean;
   artifactNearby: boolean;
   recentArtifactBanner: {
@@ -272,6 +275,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const [paused, setPaused] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [controlsModalSection, setControlsModalSection] = useState<'KEYBOARD' | 'MOBILE' | null>(null);
   const controlsModalOpenRef = useRef(false);
   controlsModalOpenRef.current = controlsModalSection !== null;
@@ -344,6 +348,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     hasIgniting: false,
     isFallingPlayer: false,
     resonanceCharge: 0,
+    tacticalReadyRatio: 1,
+    overheadDangerDist: 99,
     hasArchitectCrown: Boolean(archive.architectCrownUnlocked),
     artifactNearby: false,
     recentArtifactBanner: null,
@@ -638,6 +644,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (code === 'KeyF') {
           sim.triggerOperatorResonance();
         }
+        if (code === 'KeyG') {
+          sim.triggerOperatorTactical();
+        }
+        if (isCodeBoundToAction(kb, 'up', code) && (sim.overheadDangerDist <= 4.5 || sim.coyoteCrushTimer > 0)) {
+          sim.triggerOverheadCounter();
+        }
       }
       keysHeld.current.add(code);
     };
@@ -892,6 +904,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           hasIgniting: sim.hasIgnitingBlocks(),
           isFallingPlayer: sim.playerState === 'falling',
           resonanceCharge: Math.round(sim.resonanceCharge),
+          tacticalReadyRatio: sim.getTacticalReadyRatio(),
+          overheadDangerDist: sim.overheadDangerDist,
           hasArchitectCrown: sim.hasArchitectCrown,
           artifactNearby: sim.artifactNearby,
           recentArtifactBanner: sim.recentArtifactBanner ? { ...sim.recentArtifactBanner } : null,
@@ -1238,11 +1252,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const moveDir: -1 | 1 = dx > 0 ? 1 : -1;
         sim.triggerStepMove(moveDir, true);
         lastFreeTapRef.current = { time: 0, side: 1 };
-      } else if (dy <= -swipeStepPx && Math.abs(dy) > Math.abs(dx) * 1.25 && !g.airBrakeFired && sim.playerState !== 'falling') {
-        if (sim.canClimbStep(sim.facing, true)) {
-          sim.triggerStepMove(sim.facing, true);
-        } else {
-          sim.aimDir = 'UP';
+      } else if (dy <= -swipeStepPx && Math.abs(dy) > Math.abs(dx) * 1.25 && !g.airBrakeFired) {
+        if (sim.overheadDangerDist <= 4.5 || sim.coyoteCrushTimer > 0) {
+          sim.triggerOverheadCounter();
+        } else if (sim.playerState !== 'falling') {
+          if (sim.canClimbStep(sim.facing, true)) {
+            sim.triggerStepMove(sim.facing, true);
+          } else {
+            sim.aimDir = 'UP';
+          }
         }
         lastFreeTapRef.current = { time: 0, side: 1 };
       } else if (dist < 16 && performance.now() - g.startTime < 280) {
@@ -1392,6 +1410,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              pausedRef.current = true;
+              setPaused(true);
+              setShowGuide(true);
+            }}
+            title="Manual Táctico Animado"
+            className="pixel-btn px-2.5 py-1 text-[11px] font-pixel text-[#A3E635] hover:text-white flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Guía</span>
+          </button>
           <button
             onClick={() => {
               soundEngine.playUiClick();
@@ -1564,6 +1596,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     style={{
                       width: `${Math.max(0, Math.min(100, hud.resonanceCharge))}%`,
                       backgroundColor: hud.resonanceCharge >= 100 ? '#FFFFFF' : chassisDef.accentColor,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Operator Active Second Tactical Ability */}
+              <div>
+                <div className="flex items-baseline justify-between gap-2 mb-1">
+                  <span className="font-pixel text-[9px] text-[#8E92A4] truncate" title={chassisDef.tacticalDesc}>
+                    ◈ {chassisDef.tacticalName || 'TÁCTICA'}
+                  </span>
+                  {hud.tacticalReadyRatio >= 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => simRef.current?.triggerOperatorTactical()}
+                      className="pixel-badge border-[#A3E635] text-[#A3E635] font-pixel text-[9px] animate-pulse cursor-pointer shrink-0"
+                    >
+                      [G] ACTIVAR
+                    </button>
+                  ) : (
+                    <span className="font-pixel text-[9px] text-[#71717A] tabular-nums shrink-0">
+                      {Math.round(hud.tacticalReadyRatio * 100)}%
+                    </span>
+                  )}
+                </div>
+                <div className={`w-full h-2 bg-[#0B0C10] border ${hud.tacticalReadyRatio >= 1 ? 'border-[#A3E635]' : 'border-[#2B2D38]'}`}>
+                  <div
+                    className="h-full transition-all duration-100"
+                    style={{
+                      width: `${Math.round(hud.tacticalReadyRatio * 100)}%`,
+                      backgroundColor: hud.tacticalReadyRatio >= 1 ? '#A3E635' : '#4D7C0F',
                     }}
                   />
                 </div>
@@ -1746,94 +1809,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               className="w-full h-full block cursor-crosshair pixel-canvas touch-game-surface"
             />
 
-            {/* Contextual Mobile Floating Pills (Detonate / Overdrive / Occupied Gadgets / Gesture Dash) */}
-            {!paused && !summary && (
-              <div className="lg:hidden absolute inset-x-2 bottom-2 z-20 pointer-events-none flex items-end justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-1.5 pointer-events-auto">
-                  {hud.hasIgniting && (
-                    <button
-                      type="button"
-                      onTouchStart={(e) => {
-                        e.preventDefault();
-                        simRef.current?.triggerForceDetonate();
-                      }}
-                      onClick={() => simRef.current?.triggerForceDetonate()}
-                      className="pixel-btn px-3 py-1.5 border-[#FB923C] bg-[#24130C]/90 font-pixel text-[10px] text-[#FED7AA] shadow-lg"
-                    >
-                      DETONAR 🔥
-                    </button>
-                  )}
-                  {hud.overdrive >= 100 && hud.overdriveTimer <= 0 && (
-                    <button
-                      type="button"
-                      onTouchStart={(e) => {
-                        e.preventDefault();
-                        edgeQueue.current.overdrive = true;
-                      }}
-                      onClick={() => (edgeQueue.current.overdrive = true)}
-                      className="pixel-btn-gold px-3 py-1.5 font-pixel text-[10px] text-[#FACC15] animate-pulse shadow-lg"
-                    >
-                      OVERDRIVE ⚡
-                    </button>
-                  )}
-                  {hud.resonanceCharge >= 100 && (
-                    <button
-                      type="button"
-                      onTouchStart={(e) => {
-                        e.preventDefault();
-                        simRef.current?.triggerOperatorResonance();
-                      }}
-                      onClick={() => simRef.current?.triggerOperatorResonance()}
-                      className="pixel-btn px-3 py-1.5 font-pixel text-[10px] bg-[#161224]/95 animate-pulse shadow-lg"
-                      style={{ borderColor: chassisDef.accentColor, color: chassisDef.accentColor }}
-                    >
-                      ✦ RESO
-                    </button>
-                  )}
-                  {hud.belt.map((gid, slot) => {
-                    const g = gid ? GADGETS.find((x) => x.id === gid) : null;
-                    if (!g) return null;
-                    return (
-                      <button
-                        key={slot}
-                        type="button"
-                        onTouchStart={(e) => {
-                          e.preventDefault();
-                          simRef.current?.useBeltGadget(slot);
-                        }}
-                        onClick={() => simRef.current?.useBeltGadget(slot)}
-                        className="pixel-btn px-2 py-1 text-[10px] font-mono text-white bg-[#12131A]/90"
-                        style={{ borderColor: g.color }}
-                      >
-                        {g.glyph} {g.shortCode}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {touchMode === 'GESTURES' && (
-                  <button
-                    type="button"
-                    onTouchStart={(e) => {
-                      e.preventDefault();
-                      edgeQueue.current.dash = true;
-                    }}
-                    onClick={() => (edgeQueue.current.dash = true)}
-                    className={`pointer-events-auto pixel-btn px-3.5 py-2 font-pixel text-[10px] touch-game-surface relative overflow-hidden ${
-                      hud.isFallingPlayer
-                        ? 'border-[#F43F5E] bg-[#2A1018]/90 text-[#FDA4AF]'
-                        : hud.dashReadyRatio >= 1
-                        ? 'border-[#38BDF8] bg-[#0F1B26]/90 text-[#38BDF8]'
-                        : 'border-[#2B2D38] bg-[#12131A]/85 text-[#71717A]'
-                    }`}
-                  >
-                    <span
-                      className="absolute inset-y-0 left-0 bg-[#38BDF8]/20 transition-all"
-                      style={{ width: `${Math.round(hud.dashReadyRatio * 100)}%` }}
-                    />
-                    <span className="relative z-10">{hud.isFallingPlayer ? 'FRENO ✦' : 'DASH'}</span>
-                  </button>
-                )}
+            {/* Top-Right Non-Blocking Detonate Pill on Mobile Viewport */}
+            {!paused && !summary && !hud.pendingStory && hud.hasIgniting && (
+              <div className="lg:hidden absolute top-2 right-2 z-20 pointer-events-auto">
+                <button
+                  type="button"
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    simRef.current?.triggerForceDetonate();
+                  }}
+                  onClick={() => simRef.current?.triggerForceDetonate()}
+                  className="pixel-btn px-3 py-1.5 border-[#FB923C] bg-[#24130C]/95 font-pixel text-[10px] text-[#FED7AA] shadow-lg animate-pulse"
+                >
+                  DETONAR 🔥
+                </button>
               </div>
             )}
 
@@ -2383,17 +2372,30 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       </div>
                     )}
                     {onUpdateKeyBindings && onUpdateVisualSettings && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          soundEngine.playUiClick();
-                          setControlsModalSection('KEYBOARD');
-                        }}
-                        className="pixel-btn w-full py-1.5 px-3 text-[10px] font-pixel text-[#FACC15] flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Keyboard className="w-3.5 h-3.5" />
-                        Editor de Teclas y Controles
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setShowGuide(true);
+                          }}
+                          className="pixel-btn w-full py-1.5 px-3 text-[10px] font-pixel text-[#A3E635] flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <BookOpen className="w-3.5 h-3.5" />
+                          Manual Táctico (Guía Animada)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setControlsModalSection('KEYBOARD');
+                          }}
+                          className="pixel-btn w-full py-1.5 px-3 text-[10px] font-pixel text-[#FACC15] flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Keyboard className="w-3.5 h-3.5" />
+                          Editor de Teclas y Controles
+                        </button>
+                      </>
                     )}
                   </div>
 
@@ -2594,6 +2596,124 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               );
             })()}
           </div>
+
+          {/* Fixed Zero-Overlap Mobile Tactical Action Dock */}
+          {!paused && !summary && (
+            <div className="lg:hidden w-full max-w-[520px] pt-1.5 flex items-center justify-between gap-1.5 shrink-0 touch-game-surface">
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                <button
+                  type="button"
+                  disabled={!isOverdriveReady}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    if (isOverdriveReady) edgeQueue.current.overdrive = true;
+                  }}
+                  onClick={() => {
+                    if (isOverdriveReady) edgeQueue.current.overdrive = true;
+                  }}
+                  className={`relative overflow-hidden pixel-btn px-2 py-1.5 font-pixel text-[9px] shrink-0 ${
+                    isOverdriveReady
+                      ? 'border-[#FACC15] text-[#FACC15] animate-pulse'
+                      : isOverdriveActive
+                        ? 'border-[#FFFFFF] text-white'
+                        : 'border-[#2B2D38] text-[#A1A1AA]'
+                  }`}
+                >
+                  <span className="absolute inset-y-0 left-0 bg-[#FACC15]/20" style={{ width: `${overdrivePct}%` }} />
+                  <span className="relative z-10">{isOverdriveActive ? 'OVR!' : `⚡ ${overdrivePct}%`}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={hud.resonanceCharge < 100}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    simRef.current?.triggerOperatorResonance();
+                  }}
+                  onClick={() => simRef.current?.triggerOperatorResonance()}
+                  className={`relative overflow-hidden pixel-btn px-2 py-1.5 font-pixel text-[9px] shrink-0 ${
+                    hud.resonanceCharge >= 100 ? 'animate-pulse text-white' : 'border-[#2B2D38] text-[#A1A1AA]'
+                  }`}
+                  style={
+                    hud.resonanceCharge >= 100
+                      ? { borderColor: chassisDef.accentColor, color: chassisDef.accentColor }
+                      : undefined
+                  }
+                >
+                  <span
+                    className="absolute inset-y-0 left-0 opacity-25"
+                    style={{ width: `${Math.min(100, hud.resonanceCharge)}%`, backgroundColor: chassisDef.accentColor }}
+                  />
+                  <span className="relative z-10">✦ {hud.resonanceCharge}%</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={hud.tacticalReadyRatio < 1}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    simRef.current?.triggerOperatorTactical();
+                  }}
+                  onClick={() => simRef.current?.triggerOperatorTactical()}
+                  className={`relative overflow-hidden pixel-btn px-2 py-1.5 font-pixel text-[9px] shrink-0 ${
+                    hud.tacticalReadyRatio >= 1
+                      ? 'border-[#A3E635] text-[#A3E635] animate-pulse'
+                      : 'border-[#2B2D38] text-[#A1A1AA]'
+                  }`}
+                >
+                  <span
+                    className="absolute inset-y-0 left-0 bg-[#A3E635]/20"
+                    style={{ width: `${Math.round(hud.tacticalReadyRatio * 100)}%` }}
+                  />
+                  <span className="relative z-10">◈ {Math.round(hud.tacticalReadyRatio * 100)}%</span>
+                </button>
+
+                {hud.belt.map((gid, slot) => {
+                  const g = gid ? GADGETS.find((x) => x.id === gid) : null;
+                  if (!g) return null;
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      onTouchStart={(e) => {
+                        e.preventDefault();
+                        simRef.current?.useBeltGadget(slot);
+                      }}
+                      onClick={() => simRef.current?.useBeltGadget(slot)}
+                      className="pixel-btn px-2 py-1.5 text-[9px] font-mono text-white bg-[#12131A] shrink-0"
+                      style={{ borderColor: g.color }}
+                    >
+                      {g.glyph}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {touchMode === 'GESTURES' && (
+                <button
+                  type="button"
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    edgeQueue.current.dash = true;
+                  }}
+                  onClick={() => (edgeQueue.current.dash = true)}
+                  className={`pixel-btn px-3 py-1.5 font-pixel text-[9px] relative overflow-hidden shrink-0 ${
+                    hud.isFallingPlayer
+                      ? 'border-[#F43F5E] bg-[#2A1018] text-[#FDA4AF]'
+                      : hud.dashReadyRatio >= 1
+                        ? 'border-[#38BDF8] bg-[#0F1B26] text-[#38BDF8]'
+                        : 'border-[#2B2D38] bg-[#12131A] text-[#71717A]'
+                  }`}
+                >
+                  <span
+                    className="absolute inset-y-0 left-0 bg-[#38BDF8]/20"
+                    style={{ width: `${Math.round(hud.dashReadyRatio * 100)}%` }}
+                  />
+                  <span className="relative z-10">{hud.isFallingPlayer ? 'FRENO ✦' : 'DASH'}</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Minimalist Mobile Controls (Option B: Hybrid Thumb Deck | Option A: Full Gestures) */}
           {touchMode === 'HYBRID' ? (
@@ -2950,6 +3070,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           onClose={() => setControlsModalSection(null)}
         />
       )}
+      <TacticalGuideModal
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        keyBindings={keyBindings}
+      />
     </div>
   );
 };

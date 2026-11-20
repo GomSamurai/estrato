@@ -35,6 +35,7 @@ import {
   RelicId,
   RigPose,
   RigUpgrades,
+  RoomArchetype,
   RunSummary,
   StorySpeaker,
   StoryTransmission,
@@ -47,6 +48,7 @@ import { CHASSIS_LIST, LORE_FRAGMENTS, MODULES, OVERCHARGES, STRATA } from '../d
 import { ARTIFACTS, getArtifactPermanentBonuses } from '../data/collectibles';
 import { EMPTY_MATERIAL_BAG, TRIAL_DEFS } from '../data/crafting';
 import { SPEAKER_PROFILES, STORY_TRANSMISSIONS } from '../data/story';
+import { getBestDepth } from '../storage/archive';
 import { SeededRNG } from './rng';
 import { soundEngine } from './audio';
 import { BlastWave, FloatingText, FxWorld } from './fx';
@@ -164,6 +166,8 @@ export function isSwappableKind(kind: CellState | undefined): boolean {
     kind === 'MAGMA_NODE' ||
     kind === 'GRAVEL' ||
     kind === 'BOUNCE_PAD' ||
+    kind === 'RESONANCE_VEIN' ||
+    kind === 'SUPPORT_BEAM' ||
     kind === 'GAS_POCKET' ||
     kind === 'ACID_VAT' ||
     kind === 'GRAV_WELL' ||
@@ -393,6 +397,21 @@ export class EstratoSimulation {
   public resonanceCharge = 0;
   public resonanceUsed = 0;
   public discoveredArtifacts: ArtifactId[] = [];
+  public rowMeta = new Map<
+    number,
+    { archetype: RoomArchetype; bannerText?: string; bannerColor?: string; secretHint?: boolean }
+  >();
+  private activeRoomArchetype: RoomArchetype = 'STANDARD';
+  private roomRowsLeft = 0;
+  public personalBestRow = 0;
+  public personalBestBroken = false;
+  public tacticalCooldown = 0;
+  public tacticalMaxCooldown = 780;
+  public overheadGuardTimer = 0;
+  public overheadDangerDist = 99;
+  public overheadCounterHeat = 0;
+  public overheadCounterCooldown = 0;
+  private overheadHeatDecayTimer = 0;
   public recentArtifactBanner: {
     id: ArtifactId;
     name: string;
@@ -427,12 +446,14 @@ export class EstratoSimulation {
     }
 
     const chassisDef = CHASSIS_LIST.find((c) => c.id === config.chassis) || CHASSIS_LIST[0];
+    this.personalBestRow = getBestDepth(config.archive);
+    this.tacticalMaxCooldown = Math.max(240, Math.round((chassisDef.tacticalCooldownSec ?? 14) * 60));
     const upg = this.getRigUpgrades();
     const rigLevel = Math.max(1, config.archive.rigLevel || 1);
     const artBonuses = getArtifactPermanentBonuses(config.archive);
     this.hasArchitectCrown = artBonuses.hasArchitectCrown;
     this.artifactIsoBonusMult = artBonuses.isoBonusMult;
-    this.chargeSpeedMult = artBonuses.chargeSpeedMult * (this.hasRelic('REL_RESONANCE_COIL') ? 1.25 : 1);
+    this.chargeSpeedMult = artBonuses.chargeSpeedMult * (this.hasRelic('REL_RESONANCE_COIL') ? 1.15 : 1);
 
     let maxO2 =
       chassisDef.maxOxygen +
@@ -452,10 +473,10 @@ export class EstratoSimulation {
     if (this.hasRelic('REL_ARCHITECT_SHARD')) this.hasSingularityLance = true;
     this.kineticShields = startShields;
 
-    if ((upg.capacitorTier || 0) >= 5) this.overdrive = 50;
-    else if ((upg.capacitorTier || 0) >= 4) this.overdrive = 25;
-    if (this.hasRelic('REL_THERMAL_CORE')) this.overdrive = Math.min(100, this.overdrive + 50);
-    if (this.hasRelic('REL_RESONANCE_COIL')) this.resonanceCharge = 60;
+    if ((upg.capacitorTier || 0) >= 5) this.overdrive = 25;
+    else if ((upg.capacitorTier || 0) >= 4) this.overdrive = 12;
+    if (this.hasRelic('REL_THERMAL_CORE')) this.overdrive = Math.min(100, this.overdrive + 30);
+    if (this.hasRelic('REL_RESONANCE_COIL')) this.resonanceCharge = 35;
 
     this.rerollsRemaining = config.archive.infra.reroll;
 
@@ -559,6 +580,11 @@ export class EstratoSimulation {
     this.materialsEarned[id] = (this.materialsEarned[id] || 0) + finalAmt;
   }
 
+  public getTacticalReadyRatio(): number {
+    if (this.tacticalMaxCooldown <= 0) return 1;
+    return Math.max(0, Math.min(1, 1 - this.tacticalCooldown / this.tacticalMaxCooldown));
+  }
+
   public get dashMaxCooldown(): number {
     const relicCut = this.hasRelic('REL_PHASE_CLOAK') ? 20 : 0;
     const modCut = this.hasModule('QUA_PHASE_DASH') ? (this.hasModuleMk2('QUA_PHASE_DASH') ? 0.5 : 0.65) : 1;
@@ -588,7 +614,7 @@ export class EstratoSimulation {
       this.chargeSpeedMult;
     const chassisMult = this.getChassisDef().overdriveGainMult ?? 1;
     const prev = this.overdrive;
-    this.overdrive = Math.min(100, this.overdrive + amount * capMult * chassisMult);
+    this.overdrive = Math.min(100, this.overdrive + amount * capMult * chassisMult * 0.42);
     if (prev < 100 && this.overdrive >= 100) {
       this.fx.addFloatingText(
         this.px + 0.5,
@@ -613,6 +639,15 @@ export class EstratoSimulation {
     mult *= 1 + Math.min(0.4, magTier * 0.08);
     mult *= 1 + (this.getStyleMultiplier() - 1) * 0.5;
     mult *= this.artifactIsoBonusMult;
+    const depthScale =
+      this.depthMeters >= 800
+        ? 1.75
+        : this.depthMeters >= 450
+          ? 1.45
+          : this.depthMeters >= 200
+            ? 1.15
+            : 0.85;
+    mult *= depthScale;
     const finalAmt = Math.max(1, Math.round(amount * mult));
     this.isotopes += finalAmt;
     return finalAmt;
@@ -858,8 +893,8 @@ export class EstratoSimulation {
     const feverMult = this.activeFever?.type === 'GOLD_RUSH' ? 1.5 : 1;
     const pts = Math.round(basePoints * mult * overdriveMult * prismRelicMult * styleMult * feverMult);
     this.score += pts;
-    this.addOverdrive(2 + Math.min(4, Math.floor(mult / 2)));
-    this.addResonance(2.8);
+    this.addOverdrive(1 + Math.min(2, Math.floor(mult / 3)));
+    this.addResonance(1.1);
 
     if (this.hasModule('PAR_BIO_FILTER')) {
       this.bioFilterBlockCount++;
@@ -917,6 +952,8 @@ export class EstratoSimulation {
       'MAGMA_NODE',
       'GRAVEL',
       'BOUNCE_PAD',
+      'RESONANCE_VEIN',
+      'SUPPORT_BEAM',
       'GAS_POCKET',
       'ACID_VAT',
       'GRAV_WELL',
@@ -1415,6 +1452,62 @@ export class EstratoSimulation {
     const rivetChance = stratum.id === 4 ? 0.065 + densityBoost * 0.08 : stratum.id >= 5 ? 0.04 + densityBoost * 0.08 : 0;
     const phaseChance = stratum.id === 5 ? 0.14 + densityBoost * 0.12 : 0;
 
+    // Procedural Subterranean Room Archetype Planner (tunnels, narrows, caverns, vaults, halls)
+    let rowArch: RoomArchetype = 'STANDARD';
+    let roomBanner: string | undefined;
+    let roomBannerColor: string | undefined;
+    let secretHint = false;
+    if (this.config.mode !== 'DUEL' && r > 18 && !(this.tutorialStep > 0 && r <= 14)) {
+      this.roomRowsLeft--;
+      if (this.roomRowsLeft <= 0) {
+        if (this.activeRoomArchetype !== 'STANDARD') {
+          this.activeRoomArchetype = 'STANDARD';
+          this.roomRowsLeft = this.rng.int(5, 8);
+        } else {
+          const rRoll = this.rng.next();
+          if (r > 30 && rRoll < 0.16) {
+            this.activeRoomArchetype = 'SECRET_VAULT';
+            this.roomRowsLeft = 4;
+            roomBanner = 'BÓVEDA OCULTA';
+            roomBannerColor = '#FACC15';
+          } else if (rRoll < 0.34) {
+            this.activeRoomArchetype = 'NARROWS';
+            this.roomRowsLeft = 7;
+            roomBanner = 'ESTRECHAMIENTO';
+            roomBannerColor = '#F97316';
+          } else if (rRoll < 0.52) {
+            this.activeRoomArchetype = 'TWIN_TUNNELS';
+            this.roomRowsLeft = 7;
+            roomBanner = 'TÚNELES GEMELOS';
+            roomBannerColor = '#38BDF8';
+          } else if (rRoll < 0.70) {
+            this.activeRoomArchetype = 'OPEN_CAVERN';
+            this.roomRowsLeft = 7;
+            roomBanner = 'CAVERNA ABIERTA';
+            roomBannerColor = '#A3E635';
+          } else if (rRoll < 0.86) {
+            this.activeRoomArchetype = 'ZIGZAG_CORRIDOR';
+            this.roomRowsLeft = 8;
+            roomBanner = 'GALERÍA EN ZIGZAG';
+            roomBannerColor = '#FB923C';
+          } else {
+            this.activeRoomArchetype = 'MINING_HALL';
+            this.roomRowsLeft = 6;
+            roomBanner = 'CÁMARA DE EXTRACCIÓN';
+            roomBannerColor = '#FDE047';
+          }
+        }
+      }
+      rowArch = this.activeRoomArchetype;
+      secretHint = rowArch === 'SECRET_VAULT';
+      this.rowMeta.set(r, {
+        archetype: rowArch,
+        bannerText: roomBanner,
+        bannerColor: roomBannerColor,
+        secretHint,
+      });
+    }
+
     // Architectural Slag Beam / Arch chance (scales tighter with DDA block density)
     const beamProb = Math.min(0.92, 0.65 + densityBoost * 1.1);
     const makeSlagBeam = r > 14 && r % 14 === 0 && this.rng.next() < beamProb;
@@ -1561,7 +1654,9 @@ export class EstratoSimulation {
       const cryoVentChance = stratum.id >= 2 && stratum.id <= 7 ? 0.018 : 0;
       const magmaNodeChance = (stratum.id >= 3 && stratum.id <= 7) || isVolatileTrial ? (isVolatileTrial ? 0.055 : 0.018) : 0;
       const gravelChance = r > 14 ? (isGravelTrial ? 0.14 : stratum.id <= 5 ? 0.026 : 0.014) : 0;
-      const bounceChance = r > 40 ? (isGravelTrial ? 0.065 : 0.022) : 0;
+      const bounceChance = r > 40 ? (isGravelTrial ? 0.055 : 0.018) : 0;
+      const resonanceVeinChance = r > 24 && stratum.id <= 7 ? 0.022 : 0;
+      const supportBeamChance = r > 18 && stratum.id <= 7 ? 0.018 : 0;
       const gasChance = r > 320 || isVolatileTrial ? (isVolatileTrial ? 0.075 : 0.024) : 0;
       const acidChance = r > 520 ? 0.018 : 0;
       const gravChance = r > 1100 ? 0.016 : 0;
@@ -1595,7 +1690,15 @@ export class EstratoSimulation {
         continue;
       }
       if (roll < (acc += bounceChance)) {
-        spawnSpec('BOUNCE_PAD', 99);
+        spawnSpec('BOUNCE_PAD', 1);
+        continue;
+      }
+      if (roll < (acc += resonanceVeinChance)) {
+        spawnSpec('RESONANCE_VEIN', 1);
+        continue;
+      }
+      if (roll < (acc += supportBeamChance)) {
+        spawnSpec('SUPPORT_BEAM', 1);
         continue;
       }
       if (roll < (acc += gasChance)) {
@@ -1652,6 +1755,104 @@ export class EstratoSimulation {
             break;
           }
         }
+      }
+    }
+
+    // Apply Non-Linear Room Sculpting while guaranteeing passability & anti-pit safety
+    if (rowArch !== 'STANDARD') {
+      const makeCell = (kind: CellState, hp = 1, col = -1): Cell => {
+        const mc = makeEmptyCell();
+        mc.state = kind === 'EMPTY' ? 'EMPTY' : 'SOLID';
+        mc.kind = kind;
+        mc.hp = hp;
+        mc.color = col;
+        return mc;
+      };
+      if (rowArch === 'NARROWS') {
+        if (r % 2 === 0) {
+          row[0] = makeCell('SLAG', this.getChassisDef().slagHits);
+          row[GRID_COLS - 1] = makeCell('SLAG', this.getChassisDef().slagHits);
+        }
+        row[1] = makeCell('SLAG', this.getChassisDef().slagHits);
+        row[GRID_COLS - 2] = makeCell('SLAG', this.getChassisDef().slagHits);
+        if (r % 3 !== 0) row[4] = makeEmptyCell();
+      } else if (rowArch === 'TWIN_TUNNELS') {
+        row[4] = r % 3 === 0 ? makeCell('SUPPORT_BEAM', 1) : makeCell('SLAG', this.getChassisDef().slagHits);
+        if (r % 4 !== 0) {
+          row[2] = makeEmptyCell();
+          row[6] = makeEmptyCell();
+        }
+      } else if (rowArch === 'ZIGZAG_CORRIDOR') {
+        const zigLeft = Math.floor(r / 3) % 2 === 0;
+        if (zigLeft) {
+          for (let zc = 0; zc <= 3; zc++) row[zc] = makeCell('SLAG', this.getChassisDef().slagHits);
+          if (r % 3 === 1) row[6] = makeEmptyCell();
+        } else {
+          for (let zc = 5; zc < GRID_COLS; zc++) row[zc] = makeCell('SLAG', this.getChassisDef().slagHits);
+          if (r % 3 === 1) row[2] = makeEmptyCell();
+        }
+      } else if (rowArch === 'OPEN_CAVERN') {
+        const isBridgeRow = this.roomRowsLeft % 4 === 1;
+        if (!isBridgeRow) {
+          for (let cc = 2; cc <= 6; cc++) {
+            if (row[cc].kind === 'OXYGEN' || row[cc].kind === 'RESONANCE_VEIN') continue;
+            row[cc] = makeEmptyCell();
+          }
+          if (this.roomRowsLeft % 2 === 0) {
+            row[1] = makeCell('SUPPORT_BEAM', 1);
+            row[7] = makeCell('SUPPORT_BEAM', 1);
+          }
+        } else {
+          row[4] = makeCell('SOLID', 1, r % colorCount);
+        }
+      } else if (rowArch === 'SECRET_VAULT') {
+        const leftSide = (r >> 3) % 2 === 0;
+        const gateCol = leftSide ? 2 : 6;
+        const vaultInner = leftSide ? [0, 1] : [7, 8];
+        row[gateCol] =
+          this.roomRowsLeft === 2 ? makeCell('SUPPORT_BEAM', 1) : makeCell('SLAG', this.getChassisDef().slagHits);
+        if (this.roomRowsLeft === 2) {
+          row[vaultInner[1]] = makeCell('TREASURE_CACHE', 1);
+          row[vaultInner[0]] = makeCell('RESONANCE_VEIN', 1);
+        } else if (this.roomRowsLeft === 3) {
+          row[vaultInner[0]] = makeEmptyCell();
+          row[vaultInner[1]] = makeCell('GEODE', 1);
+        }
+      } else if (rowArch === 'MINING_HALL') {
+        if (this.roomRowsLeft % 2 === 0) {
+          row[2] = makeCell('SUPPORT_BEAM', 1);
+          row[6] = makeCell('SUPPORT_BEAM', 1);
+        }
+        if (this.roomRowsLeft === 3) {
+          row[4] = makeCell('RESONANCE_VEIN', 1);
+        } else if (row[4].state !== 'EMPTY' && row[4].kind === 'SOLID') {
+          row[4] = makeCell('CRYSTAL', 1, r % colorCount);
+        }
+      }
+
+      // Safety invariant A: prevent > 4 consecutive empty vertical air rows in any column
+      for (let c = 0; c < GRID_COLS; c++) {
+        if (row[c].state === 'EMPTY') {
+          let streak = 0;
+          for (let kr = 1; kr <= 4; kr++) {
+            if (this.getCell(r - kr, c).state === 'EMPTY') streak++;
+            else break;
+          }
+          if (streak >= 4) {
+            row[c] = makeCell('SOLID', 1, (c + r) % colorCount);
+          }
+        }
+      }
+
+      // Safety invariant B: guarantee at least 3 drillable/passable columns per row
+      let passableCount = 0;
+      for (let c = 0; c < GRID_COLS; c++) {
+        if (row[c].kind !== 'RIVET' && row[c].kind !== 'MONOLITH') passableCount++;
+      }
+      if (passableCount < 3) {
+        row[3] = makeCell('SOLID', 1, 0);
+        row[4] = makeCell('SOLID', 1, 1 % colorCount);
+        row[5] = makeCell('SOLID', 1, 2 % colorCount);
       }
     }
 
@@ -1967,6 +2168,13 @@ export class EstratoSimulation {
     }
     if (this.invulnTimer > 0) this.invulnTimer--;
     if (this.oxygenFreezeTimer > 0) this.oxygenFreezeTimer--;
+    if (this.tacticalCooldown > 0) this.tacticalCooldown--;
+    if (this.overheadGuardTimer > 0) this.overheadGuardTimer--;
+    if (this.overheadCounterCooldown > 0) this.overheadCounterCooldown--;
+    if (this.overheadHeatDecayTimer > 0) {
+      this.overheadHeatDecayTimer--;
+      if (this.overheadHeatDecayTimer === 0) this.overheadCounterHeat = 0;
+    }
 
     // Activate Overdrive if requested and charged
     if (input.overdrivePressed) {
@@ -2023,6 +2231,15 @@ export class EstratoSimulation {
           this.updateFX();
           return false;
         }
+      }
+      if (this.coyoteCrushTimer > 0 && this.overheadGuardTimer > 0 && this.coyoteCrushCellPos) {
+        const { r: cr, c: cc } = this.coyoteCrushCellPos;
+        this.coyoteCrushTimer = 0;
+        this.coyoteCrushCellPos = null;
+        this.overheadGuardTimer = 0;
+        this.shatterOverheadBlock(cr, cc, false);
+        this.updateFX();
+        return false;
       }
       if (this.coyoteCrushTimer === 0 && this.coyoteCrushCellPos) {
         // Confirm lethal crush!
@@ -2112,11 +2329,21 @@ export class EstratoSimulation {
       const scanRange = this.hasRelic('REL_ARTIFACT_SCANNER') ? 14 : 7;
       const centerR = Math.floor(this.py);
       let foundNearby = false;
+      const hasVaultSense = this.hasModule('QUA_VAULT_SENSE');
+      const vaultScanRange = this.hasModuleMk2('QUA_VAULT_SENSE') ? 8 : 6;
       for (let rr = Math.max(this.minPrunedRow, centerR - 4); rr <= centerR + scanRange && !foundNearby; rr++) {
         const rrRow = this.grid.get(rr);
         if (!rrRow) continue;
         for (let cc = 0; cc < GRID_COLS; cc++) {
           if (rrRow[cc].kind === 'ARTIFACT_POD' && rrRow[cc].state !== 'EMPTY') {
+            foundNearby = true;
+            break;
+          }
+        }
+      }
+      if (!foundNearby && hasVaultSense) {
+        for (let rr = Math.max(this.minPrunedRow, centerR - 2); rr <= centerR + vaultScanRange; rr++) {
+          if (this.rowMeta.get(rr)?.secretHint) {
             foundNearby = true;
             break;
           }
@@ -2129,15 +2356,20 @@ export class EstratoSimulation {
     const pRow = Math.max(0, Math.floor(this.py - 0.45));
     const pCol = Math.max(0, Math.min(GRID_COLS - 1, this.gridCol));
     let dangerCol = false;
+    let minFallingDist = this.coyoteCrushTimer > 0 ? 0 : 99;
     const topDangerR = Math.max(this.minPrunedRow, pRow - 10);
     for (let rr = topDangerR; rr < pRow; rr++) {
       const c = this.getCell(rr, pCol);
       if (c.state === 'WOBBLE' || c.state === 'FALLING') {
         dangerCol = true;
-        break;
+        if (c.state === 'FALLING') {
+          const gap = Math.max(0, pRow - (rr + c.fallOffset));
+          if (gap < minFallingDist) minFallingDist = gap;
+        }
       }
     }
     this.overheadDangerCol = dangerCol;
+    this.overheadDangerDist = minFallingDist;
 
     this.updateFX();
   }
@@ -2435,46 +2667,65 @@ export class EstratoSimulation {
         if (landedRow !== null) {
           this.playerFallRows += Math.max(0, landedRow - prevPy);
           const landedCell = this.getCell(landedRow, this.targetCol);
-          // Player landing on BOUNCE_PAD launches upward 3 rows!
+          // Player landing on BOUNCE_PAD (Válvula Geotérmica) vents 1 steam lift, heals O2 & purges itself
           if (landedCell.kind === 'BOUNCE_PAD') {
-            this.py = landedRow - 0.02;
-            this.vy = -13.5;
+            this.setCell(landedRow, this.targetCol, makeEmptyCell());
+            if (landedRow - 1 >= 0) {
+              const aboveValve = this.getCell(landedRow - 1, this.targetCol);
+              if (
+                aboveValve.state !== 'EMPTY' &&
+                aboveValve.kind !== 'RIVET' &&
+                aboveValve.kind !== 'MONOLITH' &&
+                aboveValve.kind !== 'BREACH_SEAL' &&
+                aboveValve.kind !== 'BIFURCATION_SEAL'
+              ) {
+                const ak = aboveValve.kind || 'SOLID';
+                this.setCell(landedRow - 1, this.targetCol, makeEmptyCell());
+                this.emitDestruction(landedRow - 1, this.targetCol, '#38BDF8', 25, ak);
+              }
+            }
+            this.py = landedRow - 0.05;
+            this.vy = -12.8;
             this.playerState = 'falling';
             this.isFallingPlayer = true;
             this.slamDiving = false;
             this.playerFallRows = 0;
-            landedCell.bounceAnim = 14;
             this.bouncesTriggered++;
             this.recordMineralStats('BOUNCE_PAD', landedRow);
+            const heal =
+              6 + (this.hasModule('BAL_SPRING_MASTER') ? (this.hasModuleMk2('BAL_SPRING_MASTER') ? 14 : 8) : 0);
+            this.oxygen = Math.min(this.maxOxygen, this.oxygen + heal);
+            this.invulnTimer = Math.max(this.invulnTimer, this.hasModule('BAL_SPRING_MASTER') ? 24 : 12);
             soundEngine.playBounce(this.targetCol);
-            this.addStyle('BOUNCE', 35);
+            soundEngine.playSteamHiss(this.targetCol);
+            this.addStyle('BOUNCE', 40);
             this.pulseCamZoom(-0.04);
-            this.fx.spawnLight(this.targetCol + 0.5, landedRow, 2.2, '#38BDF8', 14, 0.38);
+            this.fx.spawnLight(this.targetCol + 0.5, landedRow, 2.4, '#38BDF8', 16, 0.4);
             this.fx.applyImpulseToCables(this.targetCol + 0.5, landedRow, 3.2, 2.4);
             this.squashX = 0.72;
             this.squashY = 1.35;
-            this.fx.spawnCellularBurst(this.targetCol + 0.5, landedRow, 'SPARK', '#38BDF8', 12, 0.14);
+            this.fx.spawnCellularBurst(this.targetCol + 0.5, landedRow, 'STEAM', '#BAE6FD', 14, 0.14);
             this.fx.spawnBlastWave({
               x: this.targetCol + 0.5,
               y: landedRow,
               radius: 0.2,
-              maxRadius: 1.8,
+              maxRadius: 1.9,
               life: 10,
               maxLife: 10,
               color: '#38BDF8',
               isHorizontalWave: true,
             });
-            if (this.hasModule('BAL_SPRING_MASTER')) {
-              const heal = this.hasModuleMk2('BAL_SPRING_MASTER') ? 25 : 15;
-              this.oxygen = Math.min(this.maxOxygen, this.oxygen + heal);
-              this.invulnTimer = Math.max(this.invulnTimer, 24);
-              this.addFloatingText(this.targetCol + 0.5, landedRow - 1, `IMPULSO +${heal}% O₂`, undefined, '#38BDF8');
-              if (this.hasModuleMk2('BAL_SPRING_MASTER')) {
-                this.triggerBlastArea(landedRow, this.targetCol, 1, false);
-              }
-            } else {
-              this.addFloatingText(this.targetCol + 0.5, landedRow - 0.8, 'MUELLE!', undefined, '#38BDF8');
+            this.addFloatingText(
+              this.targetCol + 0.5,
+              landedRow - 0.9,
+              `VÁLVULA +${heal}% O₂`,
+              'IMPULSO PURGADO',
+              '#38BDF8'
+            );
+            if (this.hasModuleMk2('BAL_SPRING_MASTER')) {
+              this.triggerBlastArea(landedRow, this.targetCol, 1, false);
             }
+            this.recomputeClustersAndSupport();
           } else {
             const impactVy = this.vy;
             const fallHeight = this.playerFallRows;
@@ -3669,12 +3920,28 @@ export class EstratoSimulation {
 
     if (cell.kind === 'BOUNCE_PAD') {
       this.setCell(r, c, makeEmptyCell());
+      this.oxygen = Math.min(this.maxOxygen, this.oxygen + 4);
       soundEngine.playDrill(false, upg.drillTier);
-      this.spawnParticles(c + 0.5, r + 0.5, '#38BDF8', 10);
+      soundEngine.playSteamHiss(c);
+      this.fx.spawnCellularBurst(c + 0.5, r + 0.5, 'STEAM', '#BAE6FD', 10, 0.12);
       this.emitDestruction(r, c, '#38BDF8', 35, 'BOUNCE_PAD');
       this.addMaterial('cuarzo', 1);
+      this.addFloatingText(c + 0.5, r - 0.1, 'VÁLVULA +4% O₂', undefined, '#38BDF8');
       tryOverdrivePierce();
       this.recomputeClustersAndSupport();
+      return;
+    }
+
+    if (cell.kind === 'RESONANCE_VEIN') {
+      this.triggerResonanceVein(r, c);
+      tryOverdrivePierce();
+      this.recomputeClustersAndSupport();
+      return;
+    }
+
+    if (cell.kind === 'SUPPORT_BEAM') {
+      this.breakSupportBeam(r, c);
+      tryOverdrivePierce();
       return;
     }
 
@@ -3779,7 +4046,7 @@ export class EstratoSimulation {
     if (this.rng.next() < 0.65) this.addMaterial('ferrita', 1);
     if (r >= 1500 && this.rng.next() < 0.4) this.addMaterial('eter', 1);
     if (r >= 2500) this.addMaterial('alabastro', 1);
-    this.addOverdrive(15);
+    this.addOverdrive(8);
     this.spawnParticles(c + 0.5, r + 0.5, '#FACC15', 14);
     this.fx.spawnCellularBurst(c + 0.5, r + 0.5, 'SPARK', '#F472B6', 10, 0.13);
     this.fx.spawnLight(c + 0.5, r + 0.5, 2.8, '#FACC15', 16, 0.44);
@@ -3787,6 +4054,213 @@ export class EstratoSimulation {
     soundEngine.pulseActivity(0.24);
     this.emitDestruction(r, c, '#FACC15', 80, 'GEODE');
     this.addFloatingText(c + 0.5, r - 0.1, `GEODA +${totalIso} ISO`, '+CUARZO · +15% OVR', '#FACC15');
+  }
+
+  private triggerResonanceVein(r: number, c: number): void {
+    const cell = this.getCell(r, c);
+    if (cell.state === 'EMPTY') return;
+    this.setCell(r, c, makeEmptyCell());
+    this.recordMineralStats('RESONANCE_VEIN', r);
+    this.addOverdrive(26);
+    this.addResonance(28);
+    this.addMaterial('cuarzo', 1);
+    this.addIsotopes(6);
+    this.addStyle('RESONANCE_VEIN', 50);
+
+    for (let sc = Math.max(0, c - 3); sc <= Math.min(GRID_COLS - 1, c + 3); sc++) {
+      if (sc === c) continue;
+      const side = this.getCell(r, sc);
+      if (side.state === 'EMPTY') continue;
+      if (side.kind === 'SLAG') {
+        side.hp -= 2;
+        side.hitFlash = 6;
+        if (side.hp <= 0) this.breakSlag(r, sc);
+      } else if (side.kind === 'CRYSTAL') {
+        this.breakCrystal(r, sc);
+      }
+    }
+
+    this.fx.spawnBlastWave({
+      x: c + 0.5,
+      y: r + 0.5,
+      radius: 0.4,
+      maxRadius: 3.4,
+      life: 14,
+      maxLife: 14,
+      color: '#FDE047',
+      isHorizontalWave: true,
+    });
+    this.fx.spawnLight(c + 0.5, r + 0.5, 3.0, '#FDE047', 16, 0.46);
+    this.fx.spawnCellularBurst(c + 0.5, r + 0.5, 'SPARK', '#FEF08A', 16, 0.14);
+    soundEngine.playDetonate(2, c);
+    this.emitDestruction(r, c, '#FDE047', 85, 'RESONANCE_VEIN');
+    this.addFloatingText(c + 0.5, r - 0.1, 'VETA PIEZOELÉCTRICA!', 'ONDA -2 HP · +CARGA', '#FDE047');
+  }
+
+  private breakSupportBeam(r: number, c: number): void {
+    const cell = this.getCell(r, c);
+    if (cell.state === 'EMPTY') return;
+    this.setCell(r, c, makeEmptyCell());
+    this.recordMineralStats('SUPPORT_BEAM', r);
+    const iso = this.addIsotopes(5);
+    this.addMaterial('ferrita', 1);
+    this.addStyle('BEAM_CUT', 35);
+    this.fx.spawnCellularBurst(c + 0.5, r + 0.5, 'SPARK', '#FB923C', 14, 0.13);
+    soundEngine.playDrill(true, 1);
+    this.triggerShake(3.2, 6);
+    this.emitDestruction(r, c, '#FB923C', 65, 'SUPPORT_BEAM');
+    this.addFloatingText(c + 0.5, r - 0.1, `PUNTAL +${iso} ISO`, '+FERRITA · SOPORTE LIBERADO', '#FB923C');
+    this.recomputeClustersAndSupport();
+  }
+
+  private shatterOverheadBlock(r: number, c: number, isPerfect: boolean): void {
+    const cell = this.getCell(r, c);
+    if (cell.state === 'EMPTY') return;
+    const bKind = cell.kind || 'SOLID';
+    this.setCell(r, c, makeEmptyCell());
+
+    if (this.hasModule('BAL_OVERHEAD_BREAKER')) {
+      const extraDepth = this.hasModuleMk2('BAL_OVERHEAD_BREAKER') ? 2 : 1;
+      for (let step = 1; step <= extraDepth; step++) {
+        const sr = r - step;
+        if (sr < 0) break;
+        const stacked = this.getCell(sr, c);
+        if (
+          stacked.state === 'FALLING' &&
+          stacked.kind !== 'OXYGEN' &&
+          stacked.kind !== 'RIVET' &&
+          stacked.kind !== 'MONOLITH' &&
+          stacked.kind !== 'BREACH_SEAL' &&
+          stacked.kind !== 'BIFURCATION_SEAL'
+        ) {
+          const sk = stacked.kind || 'SOLID';
+          this.setCell(sr, c, makeEmptyCell());
+          this.emitDestruction(sr, c, '#FACC15', 30, sk);
+        }
+      }
+    }
+
+    this.invulnTimer = Math.max(this.invulnTimer, isPerfect ? 20 : 16);
+    this.triggerShake(isPerfect ? 4.8 : 3.2, 7);
+    this.addCamTrauma(isPerfect ? 0.35 : 0.22);
+    this.hitstopFrames = Math.max(this.hitstopFrames, isPerfect ? 3 : 2);
+    soundEngine.playParry();
+    this.fx.spawnParrySlash(this.px + 0.5, this.py - 0.75, this.facing || 1);
+    this.fx.spawnLight(c + 0.5, Math.max(0, this.py - 0.8), 2.8, isPerfect ? '#FACC15' : '#38BDF8', 16, 0.48);
+    this.fx.spawnCellularBurst(c + 0.5, Math.max(0, this.py - 0.8), 'SPARK', isPerfect ? '#FACC15' : '#38BDF8', 18, 0.16);
+    this.emitDestruction(r, c, isPerfect ? '#FACC15' : '#38BDF8', isPerfect ? 90 : 45, bKind);
+    this.addStyle(isPerfect ? 'PERFECT_COUNTER' : 'GUARD_COUNTER', isPerfect ? 65 : 30);
+    if (isPerfect) {
+      this.addOverdrive(14);
+      this.addResonance(16);
+      const mk2O2 = this.hasModuleMk2('BAL_OVERHEAD_BREAKER') ? 6 : 0;
+      if (mk2O2 > 0) this.oxygen = Math.min(this.maxOxygen, this.oxygen + mk2O2);
+      this.addFloatingText(
+        this.px + 0.5,
+        this.py - 1.35,
+        'CONTRAATAQUE PERFECTO!',
+        mk2O2 > 0 ? `+6% O₂ · +CARGA` : '0% O₂ · +CARGA',
+        '#FACC15',
+        1.15
+      );
+    } else {
+      this.addFloatingText(this.px + 0.5, this.py - 1.35, 'BLOQUEO AÉREO!', '-6% O₂', '#38BDF8');
+    }
+    this.recomputeClustersAndSupport();
+  }
+
+  public triggerOverheadCounter(): 'PERFECT' | 'GUARD' | 'DODGE' | 'WHIFF' | 'COOLDOWN' {
+    if (this.finished || this.pendingStory) return 'COOLDOWN';
+    if (this.overheadCounterCooldown > 0) {
+      soundEngine.playThermalDud();
+      this.addFloatingText(this.px + 0.5, this.py - 1.2, 'ENFRIANDO...', undefined, '#94A3B8');
+      return 'COOLDOWN';
+    }
+
+    const pRow = Math.max(0, Math.floor(this.py - 0.45));
+    const pCol = Math.max(0, Math.min(GRID_COLS - 1, this.gridCol));
+    const isBreaker = this.hasModule('BAL_OVERHEAD_BREAKER');
+
+    let targetR = -1;
+    let targetCell: Cell | null = null;
+    let distRows = 99;
+
+    if (this.coyoteCrushTimer > 0 && this.coyoteCrushCellPos) {
+      targetR = this.coyoteCrushCellPos.r;
+      targetCell = this.getCell(this.coyoteCrushCellPos.r, this.coyoteCrushCellPos.c);
+      distRows = 0;
+    } else {
+      for (let rr = pRow - 1; rr >= Math.max(this.minPrunedRow, pRow - 5); rr--) {
+        const cell = this.getCell(rr, pCol);
+        if (cell.state === 'FALLING') {
+          targetR = rr;
+          targetCell = cell;
+          distRows = Math.max(0, pRow - (rr + cell.fallOffset));
+          break;
+        }
+      }
+    }
+
+    if (targetCell && targetR >= 0 && this.overheadCounterHeat < 3) {
+      if (targetCell.kind === 'MONOLITH' || targetCell.kind === 'RIVET' || targetCell.kind === 'BREACH_SEAL') {
+        const firstDir: -1 | 1 = this.facing < 0 ? -1 : 1;
+        const secondDir: -1 | 1 = firstDir === 1 ? -1 : 1;
+        for (const d of [firstDir, secondDir] as const) {
+          const nc = pCol + d;
+          if (nc >= 0 && nc < GRID_COLS && this.getCell(pRow, nc).state === 'EMPTY') {
+            this.targetCol = nc;
+            this.gridCol = nc;
+            this.px = nc;
+            this.facing = d;
+            this.coyoteCrushTimer = 0;
+            this.coyoteCrushCellPos = null;
+            this.invulnTimer = Math.max(this.invulnTimer, 20);
+            this.addStyle('DODGE_PARRY', 55);
+            soundEngine.playDash();
+            this.addFloatingText(nc + 0.5, this.py - 1.2, 'ESQUIVA LATERAL!', 'ROCA INDESTRUCTIBLE', '#38BDF8');
+            return 'DODGE';
+          }
+        }
+      }
+
+      if (distRows <= 2.35) {
+        const perfectCutoff = isBreaker ? 1.65 : 1.15;
+        const isPerfect = this.coyoteCrushTimer > 0 || distRows <= perfectCutoff;
+        const o2Cost = isPerfect ? 0 : isBreaker ? 3 : 6;
+        if (o2Cost > 0 && this.overdriveTimer <= 0) {
+          this.oxygen = Math.max(0, this.oxygen - o2Cost);
+        }
+        const hitC = this.coyoteCrushCellPos ? this.coyoteCrushCellPos.c : pCol;
+        this.coyoteCrushTimer = 0;
+        this.coyoteCrushCellPos = null;
+        this.overheadGuardTimer = 0;
+        this.shatterOverheadBlock(targetR, hitC, isPerfect);
+        this.overheadCounterHeat++;
+        this.overheadHeatDecayTimer = 150;
+        if (this.overheadCounterHeat >= 3) {
+          this.overheadCounterCooldown = 75;
+        }
+        return isPerfect ? 'PERFECT' : 'GUARD';
+      }
+
+      // Slightly higher falling block: brace overhead gauntlet for incoming impact
+      this.overheadGuardTimer = isBreaker ? 24 : 16;
+      this.aimDir = 'UP';
+      this.setActionPose('PARRY_SLASH', 10);
+      soundEngine.playUiClick();
+      this.addFloatingText(this.px + 0.5, this.py - 1.2, 'GUARDIA SUPERIOR', undefined, '#38BDF8');
+      return 'GUARD';
+    }
+
+    // Blind whiff costs a bit of oxygen & locks counter briefly
+    if (this.overdriveTimer <= 0) {
+      this.oxygen = Math.max(0, this.oxygen - 3);
+    }
+    this.overheadCounterCooldown = 36;
+    this.aimDir = 'UP';
+    soundEngine.playThermalDud();
+    this.addFloatingText(this.px + 0.5, this.py - 1.2, 'SIN IMPACTO -3% O₂', undefined, '#94A3B8');
+    return 'WHIFF';
   }
 
   private breakCryoVent(r: number, c: number): void {
@@ -3855,7 +4329,7 @@ export class EstratoSimulation {
     const cell = this.getCell(r, c);
     if (cell.state === 'EMPTY') return;
     this.setCell(r, c, makeEmptyCell());
-    this.addOverdrive(this.hasModule('PYRO_GAS_SPARK') ? 20 : 10);
+    this.addOverdrive(this.hasModule('PYRO_GAS_SPARK') ? 10 : 5);
     this.addMaterial('ignita', 1);
     if (this.hasModuleMk2('PYRO_GAS_SPARK')) {
       this.oxygen = Math.min(this.maxOxygen, this.oxygen + 12);
@@ -3889,7 +4363,7 @@ export class EstratoSimulation {
     if (cell.state === 'EMPTY') return;
     this.setCell(r, c, makeEmptyCell());
     this.addMaterial('ignita', 1);
-    this.addOverdrive(this.hasModule('PYRO_GAS_SPARK') ? 20 : 8);
+    this.addOverdrive(this.hasModule('PYRO_GAS_SPARK') ? 10 : 4);
     if (this.hasModuleMk2('PYRO_GAS_SPARK')) {
       this.oxygen = Math.min(this.maxOxygen, this.oxygen + 12);
     }
@@ -3994,7 +4468,7 @@ export class EstratoSimulation {
     const cell = this.getCell(r, c);
     if (cell.state === 'EMPTY') return;
     this.setCell(r, c, makeEmptyCell());
-    const ovrGain = this.hasModule('PAR_MINE_HARVEST') ? 35 : 20;
+    const ovrGain = this.hasModule('PAR_MINE_HARVEST') ? 18 : 10;
     this.addOverdrive(ovrGain);
     this.addMaterial('titanio', 1);
     if (this.hasModuleMk2('PAR_MINE_HARVEST')) {
@@ -4009,14 +4483,15 @@ export class EstratoSimulation {
   private openTreasureCache(r: number, c: number): void {
     this.setCell(r, c, makeEmptyCell());
     this.cachesOpened++;
-    const bonusMult = this.hasRelic('REL_GEODE_COMPASS') || this.hasModule('PAR_SCAVENGER') ? 1.5 : 1;
+    let bonusMult = this.hasRelic('REL_GEODE_COMPASS') || this.hasModule('PAR_SCAVENGER') ? 1.5 : 1;
+    if (this.hasModule('QUA_VAULT_SENSE')) bonusMult *= 1.25;
     const iso = this.addIsotopes(Math.round(35 * bonusMult));
     this.addMaterial('ferrita', 3);
     this.addMaterial('cuarzo', 2);
     this.addMaterial(r >= 1500 ? 'eter' : 'titanio', 2);
     if (r >= 2500) this.addMaterial('alabastro', 2);
 
-    this.kineticShields += 1;
+    this.kineticShields += this.hasModuleMk2('QUA_VAULT_SENSE') ? 2 : 1;
     this.fx.spawnIsotopeOrbs(c + 0.5, r + 0.5, 10, 5, '#FACC15');
     this.fx.spawnCellularBurst(c + 0.5, r + 0.5, 'SPARK', '#FACC15', 18, 0.15);
     soundEngine.playTreasureOpen();
@@ -4044,8 +4519,8 @@ export class EstratoSimulation {
     const scanMult = this.hasRelic('REL_ARTIFACT_SCANNER') ? 1.35 : 1;
     const bonusIso = this.addIsotopes(Math.round(art.findBonusIso * scanMult));
     this.addMaterial(art.findBonusMat, alreadyOwned ? 2 : 1);
-    this.addResonance(25);
-    this.addOverdrive(20);
+    this.addResonance(12);
+    this.addOverdrive(10);
     this.addStyle('ARTIFACT', 120);
     this.fx.spawnLight(c + 0.5, r + 0.5, 3.6, art.color, 24, 0.58);
     this.fx.spawnCellularBurst(c + 0.5, r + 0.5, 'SPARK', art.accent, 22, 0.18);
@@ -4085,7 +4560,7 @@ export class EstratoSimulation {
   public addResonance(amount: number): void {
     if (this.finished || this.config.mode === 'DUEL') return;
     const prev = this.resonanceCharge;
-    this.resonanceCharge = Math.min(100, this.resonanceCharge + amount * this.chargeSpeedMult);
+    this.resonanceCharge = Math.min(100, this.resonanceCharge + amount * this.chargeSpeedMult * 0.38);
     if (prev < 100 && this.resonanceCharge >= 100) {
       soundEngine.playComboTierUp(6);
       this.addFloatingText(
@@ -4245,6 +4720,146 @@ export class EstratoSimulation {
     return true;
   }
 
+  public triggerOperatorTactical(): boolean {
+    if (this.finished || this.pendingStory || this.tacticalCooldown > 0) return false;
+    const def = this.getChassisDef();
+    this.tacticalCooldown = this.tacticalMaxCooldown;
+    const pRow = Math.max(0, this.gridRow);
+    const pCol = Math.max(0, Math.min(GRID_COLS - 1, this.gridCol));
+
+    soundEngine.playResonanceBurst();
+    soundEngine.pulseActivity(0.32);
+    this.addStyle('TACTICAL', 40);
+    this.triggerShake(4.0, 6);
+    this.fx.spawnLight(this.px + 0.5, this.py - 0.5, 3.0, def.accentColor, 16, 0.45);
+
+    switch (def.id) {
+      case 'MKI_VERTICE': {
+        for (let rr = pRow + 1; rr <= pRow + 3; rr++) {
+          const target = this.getCell(rr, pCol);
+          if (target.kind === 'RIVET' || target.kind === 'MONOLITH' || target.kind === 'BREACH_SEAL') break;
+          if (target.state !== 'EMPTY') this.drillAt(rr, pCol, false, false);
+        }
+        for (const sc of [pCol - 1, pCol + 1]) {
+          if (sc >= 0 && sc < GRID_COLS) {
+            const side = this.getCell(pRow + 1, sc);
+            if (side.kind === 'SLAG') {
+              side.hp -= 2;
+              if (side.hp <= 0) this.breakSlag(pRow + 1, sc);
+            }
+          }
+        }
+        this.addFloatingText(this.px + 0.5, this.py - 1.3, 'PULSO PERFORADOR!', '3 BLOQUES · ESCORIA', def.accentColor);
+        break;
+      }
+      case 'MKII_ESPECTRO': {
+        const oppCol = GRID_COLS - 1 - pCol;
+        const c1 = this.getCell(pRow + 1, pCol);
+        const c2 = this.getCell(pRow + 1, oppCol);
+        if (isSwappableKind(c1.kind) && isSwappableKind(c2.kind)) {
+          this.setCell(pRow + 1, pCol, c2);
+          this.setCell(pRow + 1, oppCol, c1);
+          this.fx.spawnSwapTrail(pRow + 1, pCol, pRow + 1, oppCol, '#38BDF8', '#A78BFA');
+        }
+        this.invulnTimer = Math.max(this.invulnTimer, 72);
+        this.addFloatingText(this.px + 0.5, this.py - 1.3, 'CAMBIO FANTASMA!', 'ESPEJO · 1,2s INVULN', def.accentColor);
+        break;
+      }
+      case 'MKI_BRISA': {
+        this.oxygenFreezeTimer = Math.max(this.oxygenFreezeTimer, 300);
+        this.oxygen = Math.min(this.maxOxygen, this.oxygen + 10);
+        for (let rr = Math.max(this.minPrunedRow, pRow - 3); rr <= pRow; rr++) {
+          const cell = this.getCell(rr, pCol);
+          if (cell.state === 'WOBBLE') cell.state = 'SOLID';
+        }
+        this.addFloatingText(this.px + 0.5, this.py - 1.3, 'VELO TÉRMICO!', '+10% O₂ · 5s CRIO', def.accentColor);
+        break;
+      }
+      case 'MKIII_YUNQUE': {
+        this.triggerBlastArea(pRow + 1, pCol, 1, false);
+        for (let rr = Math.max(0, pRow - 1); rr <= pRow + 2; rr++) {
+          for (let cc = Math.max(0, pCol - 2); cc <= Math.min(GRID_COLS - 1, pCol + 2); cc++) {
+            const c = this.getCell(rr, cc);
+            if (c.kind === 'SLAG') {
+              c.hp -= 2;
+              if (c.hp <= 0) this.breakSlag(rr, cc);
+            }
+          }
+        }
+        if (this.kineticShields < 3) this.kineticShields += 1;
+        this.addFloatingText(this.px + 0.5, this.py - 1.3, 'MARTILLO BASTIÓN!', 'ESCORIA ROTA · +ESCUDO', def.accentColor);
+        break;
+      }
+      case 'MKIV_METRONOMO': {
+        for (let cc = Math.max(0, pCol - 1); cc <= Math.min(GRID_COLS - 1, pCol + 1); cc++) {
+          const c = this.getCell(pRow + 1, cc);
+          if (c.kind === 'SLAG') {
+            c.hp -= 2;
+            if (c.hp <= 0) this.breakSlag(pRow + 1, cc);
+          } else if (c.state !== 'EMPTY' && c.kind !== 'RIVET' && c.kind !== 'MONOLITH') {
+            this.drillAt(pRow + 1, cc, false, false);
+          }
+        }
+        const onBeat = soundEngine.isOnBeat(0.32);
+        if (onBeat) {
+          this.oxygen = Math.min(this.maxOxygen, this.oxygen + 12);
+          this.tacticalCooldown = Math.round(this.tacticalCooldown * 0.65);
+        }
+        this.addFloatingText(
+          this.px + 0.5,
+          this.py - 1.3,
+          onBeat ? 'SÍNCOPE PERFECTA!' : 'SÍNCOPE SÓNICA!',
+          onBeat ? '+12% O₂ · -35% ENFRIAM.' : 'BARRIDO 3×1',
+          def.accentColor
+        );
+        break;
+      }
+      case 'MKV_TITAN': {
+        for (let rr = pRow + 1; rr <= pRow + 2; rr++) {
+          for (let cc = Math.max(0, pCol - 1); cc <= Math.min(GRID_COLS - 1, pCol + 1); cc++) {
+            const c = this.getCell(rr, cc);
+            if (c.kind === 'SLAG') this.breakSlag(rr, cc);
+            else if (c.state !== 'EMPTY' && c.kind !== 'RIVET' && c.kind !== 'MONOLITH' && c.kind !== 'BREACH_SEAL') {
+              this.drillAt(rr, cc, false, false);
+            }
+          }
+        }
+        if (this.kineticShields < 4) this.kineticShields += 1;
+        this.addFloatingText(this.px + 0.5, this.py - 1.3, 'APLASTAMIENTO TITÁN!', 'BOLSILLO 3×2 · +ESCUDO', def.accentColor);
+        break;
+      }
+      case 'MKVI_QUANTUM': {
+        const stratum = this.getStratumForRow(pRow + 2);
+        const modColors = Math.max(2, stratum.colorCount);
+        for (let rr = pRow + 1; rr <= pRow + 3; rr++) {
+          for (let cc = Math.max(0, pCol - 1); cc <= Math.min(GRID_COLS - 1, pCol + 1); cc++) {
+            const cell = this.getCell(rr, cc);
+            if (cell.state === 'SOLID' && (cell.kind === 'SOLID' || cell.kind === 'PHASE')) {
+              cell.kind = 'SOLID';
+              cell.color = (cc === pCol ? 0 : 1) % modColors;
+            }
+          }
+        }
+        this.addFloatingText(this.px + 0.5, this.py - 1.3, 'PULSO ENTRÓPICO!', 'MATRIZ 3×3 ALINEADA', def.accentColor);
+        break;
+      }
+      case 'MKVII_PIRO': {
+        this.triggerBlastArea(pRow + 1, pCol, 1, false);
+        for (let rr = pRow + 1; rr <= pRow + 2; rr++) {
+          for (let cc = Math.max(0, pCol - 1); cc <= Math.min(GRID_COLS - 1, pCol + 1); cc++) {
+            this.emberCells.push({ r: rr, c: cc, timer: 180 });
+          }
+        }
+        this.addFloatingText(this.px + 0.5, this.py - 1.3, 'ANTORCHA PIRA!', 'CRÁTER + BRASAS', def.accentColor);
+        break;
+      }
+    }
+    this.recomputeClustersAndSupport();
+    this.checkIgnitions();
+    this.checkImmediatePlayerFall();
+    return true;
+  }
+
   private triggerOperatorBanter(
     kind: 'start' | 'deep' | 'chain' | 'artifact' | 'lastBreath',
     force = false
@@ -4392,10 +5007,10 @@ export class EstratoSimulation {
     soundEngine.playSwap(c1);
     soundEngine.pulseActivity(0.14);
     this.addResonance(
-      this.hasModule('QUA_RESONANCE') ? (this.hasModuleMk2('QUA_RESONANCE') ? 10 : 6) : 2.2
+      this.hasModule('QUA_RESONANCE') ? (this.hasModuleMk2('QUA_RESONANCE') ? 4.5 : 2.6) : 1.0
     );
     if (this.hasModule('QUA_RESONANCE')) {
-      this.addOverdrive(this.hasModuleMk2('QUA_RESONANCE') ? 6 : 4);
+      this.addOverdrive(this.hasModuleMk2('QUA_RESONANCE') ? 3 : 2);
     }
     this.addStyle('SWAP', 12);
     if (this.getSynergyTier('CUANTICO') >= 2 && this.frameCount % 8 === 0) {
@@ -4825,6 +5440,19 @@ export class EstratoSimulation {
         // Player Coyote Crush collision check!
         if (c === pCol && r === pRow - 1 && cell.fallOffset > 0.35 && this.coyoteCrushTimer === 0 && this.invulnTimer === 0) {
           if (cell.kind !== 'OXYGEN') {
+            if (
+              this.overheadGuardTimer > 0 &&
+              cell.kind !== 'RIVET' &&
+              cell.kind !== 'MONOLITH' &&
+              cell.kind !== 'BREACH_SEAL' &&
+              cell.kind !== 'BIFURCATION_SEAL'
+            ) {
+              this.overheadGuardTimer = 0;
+              const o2Cost = this.overdriveTimer > 0 ? 0 : this.hasModule('BAL_OVERHEAD_BREAKER') ? 3 : 6;
+              if (o2Cost > 0) this.oxygen = Math.max(0, this.oxygen - o2Cost);
+              this.shatterOverheadBlock(r, c, false);
+              continue;
+            }
             this.coyoteCrushTimer = this.getEffectiveParryFrames();
             this.coyoteCrushCellPos = { r, c };
             soundEngine.playParryTension();
@@ -4851,6 +5479,19 @@ export class EstratoSimulation {
 
               // Check direct head impact after moving down
               if (c === pCol && nextR === pRow && cell.kind !== 'OXYGEN' && this.coyoteCrushTimer === 0 && this.invulnTimer === 0) {
+                if (
+                  this.overheadGuardTimer > 0 &&
+                  cell.kind !== 'RIVET' &&
+                  cell.kind !== 'MONOLITH' &&
+                  cell.kind !== 'BREACH_SEAL' &&
+                  cell.kind !== 'BIFURCATION_SEAL'
+                ) {
+                  this.overheadGuardTimer = 0;
+                  const o2Cost = this.overdriveTimer > 0 ? 0 : this.hasModule('BAL_OVERHEAD_BREAKER') ? 3 : 6;
+                  if (o2Cost > 0) this.oxygen = Math.max(0, this.oxygen - o2Cost);
+                  this.shatterOverheadBlock(nextR, c, false);
+                  break;
+                }
                 this.coyoteCrushTimer = this.getEffectiveParryFrames();
                 this.coyoteCrushCellPos = { r: nextR, c };
                 soundEngine.playParryTension();
@@ -4972,19 +5613,15 @@ export class EstratoSimulation {
       return;
     }
 
-    // 2b. Rebound falling blocks landing on a BOUNCE_PAD!
+    // 2b. Falling block landing on Válvula Geotérmica (BOUNCE_PAD) purges the valve cleanly in 1 vent!
     if (below.kind === 'BOUNCE_PAD' && falling.kind !== 'OXYGEN') {
-      below.bounceAnim = 12;
-      soundEngine.playBounce();
-      const firstDir = (r + c) % 2 === 0 ? -1 : 1;
-      for (const dir of [firstDir, -firstDir] as const) {
-        const sc = c + dir;
-        if (sc >= 0 && sc < GRID_COLS && this.getCell(r, sc).state === 'EMPTY') {
-          this.setCell(r, sc, { ...falling, fallOffset: 0, fallDistance: 0, state: 'FALLING' });
-          this.setCell(r, c, makeEmptyCell());
-          return;
-        }
-      }
+      this.setCell(belowR, belowC, makeEmptyCell());
+      soundEngine.playSteamHiss(belowC);
+      this.fx.spawnCellularBurst(belowC + 0.5, belowR + 0.5, 'STEAM', '#BAE6FD', 10, 0.1);
+      falling.state = 'FALLING';
+      falling.fallOffset = 0;
+      falling.fallDistance = 0;
+      return;
     }
 
     // 2c. GRAVEL Avalanche diagonal slide when landing on solid block
@@ -5379,7 +6016,7 @@ export class EstratoSimulation {
     // Isotopes, Overdrive & Guardian Damage
     if (chain === 2) this.addIsotopes(4, true);
     else if (chain >= 3) this.addIsotopes(chain * 5, true);
-    this.addOverdrive(chain * 8);
+    this.addOverdrive(chain * 3.5);
     if (this.activeGuardian) {
       if (this.activeGuardian.id === 'WARDEN') {
         let hit = false;
@@ -5430,7 +6067,7 @@ export class EstratoSimulation {
     // Juice: Hitstop + Shake + Camera Zoom/Chroma + Lights + Cables + Spatial Sound
     soundEngine.playDetonate(chain, c);
     soundEngine.pulseActivity(0.32 + Math.min(0.4, chain * 0.05));
-    this.addResonance(Math.min(28, 8 * chain));
+    this.addResonance(Math.min(12, 3.6 * chain));
     if (chain >= 3) {
       this.triggerOperatorBanter('chain');
     }
@@ -5606,7 +6243,14 @@ export class EstratoSimulation {
       this.collectArtifactPod(r, c);
       return;
     }
-    if (cell.kind === 'BOUNCE_PAD') return;
+    if (cell.kind === 'RESONANCE_VEIN') {
+      this.triggerResonanceVein(r, c);
+      return;
+    }
+    if (cell.kind === 'SUPPORT_BEAM') {
+      this.breakSupportBeam(r, c);
+      return;
+    }
     if (cell.state !== 'IGNITING' && cell.state !== 'DETONATING') {
       const blastKind = cell.kind || 'SOLID';
       this.setCell(r, c, makeEmptyCell());
@@ -5696,6 +6340,7 @@ export class EstratoSimulation {
       if (cell.state === 'EMPTY' || cell.state === 'FALLING') return false;
       if (
         cell.kind === 'RIVET' ||
+        cell.kind === 'SUPPORT_BEAM' ||
         cell.kind === 'MONOLITH' ||
         cell.kind === 'BREACH_SEAL' ||
         cell.kind === 'BIFURCATION_SEAL' ||
@@ -5720,6 +6365,7 @@ export class EstratoSimulation {
           if (cell.clusterId === 0 || supportedClusters.has(cell.clusterId)) continue;
           if (
             cell.kind === 'RIVET' ||
+            cell.kind === 'SUPPORT_BEAM' ||
             cell.kind === 'MONOLITH' ||
             cell.kind === 'BREACH_SEAL' ||
             cell.kind === 'BIFURCATION_SEAL' ||
@@ -5790,7 +6436,7 @@ export class EstratoSimulation {
         if (cell.state !== 'SOLID') continue;
         const isSticky = cell.kind === 'SOLID' || cell.kind === 'PHASE';
         if (isSticky) continue;
-        if (cell.kind === 'RIVET' || cell.kind === 'MONOLITH' || cell.kind === 'BREACH_SEAL' || cell.kind === 'BIFURCATION_SEAL') continue;
+        if (cell.kind === 'RIVET' || cell.kind === 'SUPPORT_BEAM' || cell.kind === 'MONOLITH' || cell.kind === 'BREACH_SEAL' || cell.kind === 'BIFURCATION_SEAL') continue;
         const below = this.getCell(r + 1, c);
         if (below.state === 'EMPTY' || below.state === 'FALLING') {
           if (cell.kind === 'GRAVEL') {
@@ -6117,6 +6763,20 @@ export class EstratoSimulation {
     this.depthMeters = Math.max(this.depthMeters, curRow);
     if (curRow > this.maxDepthReached) {
       this.maxDepthReached = curRow;
+    }
+    if (this.personalBestRow > 0 && !this.personalBestBroken && this.depthMeters >= this.personalBestRow) {
+      this.personalBestBroken = true;
+      const bonus = this.addIsotopes(15);
+      this.addStyle('NEW_RECORD', 100);
+      soundEngine.playBiomeTransition(this.currentStratumId);
+      this.addFloatingText(
+        this.px + 0.5,
+        this.py - 1.4,
+        '¡RÉCORD PERSONAL SUPERADO!',
+        `${this.depthMeters}M · +${bonus} ISO`,
+        '#FACC15',
+        1.25
+      );
     }
     this.maybeStartFeverEvent(curRow);
 
@@ -6927,6 +7587,7 @@ export class EstratoSimulation {
   private pruneRowsAbove(minRow: number): void {
     while (this.minPrunedRow < minRow) {
       this.grid.delete(this.minPrunedRow);
+      this.rowMeta.delete(this.minPrunedRow);
       this.minPrunedRow++;
     }
   }

@@ -50,9 +50,11 @@ import {
   getPendulumBossSprite,
   getPhaseBlockSprite,
   getPhaseKeyBlockSprite,
+  getResonanceVeinBlockSprite,
   getRivetBlockSprite,
   getSealGateSprite,
   getShaftWallStrip,
+  getSupportBeamBlockSprite,
   getShockMineBlockSprite,
   getSlagBlockSprite,
   getTreasureCacheBlockSprite,
@@ -578,6 +580,72 @@ export function renderSimulation(
     }
   }
 
+  // Layer 1C: Procedural Room Architectural Arches, Lamps, Secret Runes & Personal Best Datum
+  const anim4c = Math.floor(timeSec * 6) & 3;
+  const fastAnim4c = Math.floor(timeSec * 14) & 3;
+  const hasVaultSense = sim.hasModule('QUA_VAULT_SENSE');
+  for (let rr = startR; rr <= endR; rr++) {
+    const rMeta = sim.rowMeta.get(rr);
+    const ry = Math.round((rr - topWorldRow) * VIRTUAL_CELL);
+    if (rMeta && rMeta.archetype !== 'STANDARD') {
+      if (rMeta.archetype === 'OPEN_CAVERN' || rMeta.archetype === 'MINING_HALL') {
+        if (rr % 3 === 0) {
+          v.fillStyle = 'rgba(15, 23, 42, 0.55)';
+          v.fillRect(VIRTUAL_WALL, ry, VIRTUAL_PLAY_W, 2);
+          const swingX = Math.round(Math.sin(timeSec * 2.4 + rr) * 2);
+          const lx = VIRTUAL_WALL + Math.round(VIRTUAL_PLAY_W * 0.5) + ((rr % 2 === 0 ? -36 : 36) + swingX);
+          v.fillStyle = '#52525B';
+          v.fillRect(lx, ry + 2, 1, 5);
+          v.fillStyle = (anim4c + rr) % 2 === 0 ? '#FBBF24' : '#FDE047';
+          v.fillRect(lx - 1, ry + 7, 3, 3);
+        }
+      }
+      if (rMeta.archetype === 'NARROWS') {
+        v.fillStyle = 'rgba(15, 18, 28, 0.6)';
+        v.fillRect(VIRTUAL_WALL, ry, 6, VIRTUAL_CELL);
+        v.fillRect(VIRTUAL_WALL + VIRTUAL_PLAY_W - 6, ry, 6, VIRTUAL_CELL);
+      }
+      if (rMeta.secretHint) {
+        const leftVault = (rr >> 3) % 2 === 0;
+        const rx = VIRTUAL_WALL + (leftVault ? 18 : VIRTUAL_PLAY_W - 26);
+        const baseAlpha = hasVaultSense
+          ? 0.52 + 0.28 * Math.sin(timeSec * 6 + rr)
+          : 0.22 + 0.14 * Math.sin(timeSec * 4 + rr);
+        v.fillStyle = `rgba(250, 204, 21, ${Math.min(0.95, baseAlpha).toFixed(2)})`;
+        v.fillRect(rx, ry + 6, 8, 1);
+        v.fillRect(rx + 3, ry + 3, 2, 7);
+        v.fillRect(rx + 1, ry + 11, 6, 1);
+        if (hasVaultSense) {
+          const dx = VIRTUAL_WALL + (leftVault ? 28 : VIRTUAL_PLAY_W - 36);
+          const dy = ry + 8;
+          v.fillStyle = fastAnim4c % 2 === 0 ? '#38BDF8' : '#FACC15';
+          v.fillRect(dx, dy - 2, 2, 5);
+          v.fillRect(dx - 2, dy, 6, 1);
+          v.fillStyle = '#FFFFFF';
+          v.fillRect(dx, dy, 2, 1);
+        }
+      }
+    }
+    if (sim.personalBestRow > 0 && rr === sim.personalBestRow) {
+      const ly = Math.round((sim.personalBestRow + 0.1 - topWorldRow) * VIRTUAL_CELL);
+      const beamCol = sim.personalBestBroken ? 'rgba(163, 230, 53, 0.55)' : 'rgba(250, 204, 21, 0.45)';
+      v.fillStyle = beamCol;
+      for (let bx = VIRTUAL_WALL + 4; bx < VIRTUAL_WALL + VIRTUAL_PLAY_W - 14; bx += 8) {
+        v.fillRect(bx, ly, 4, 1);
+      }
+      const postX = VIRTUAL_WALL + VIRTUAL_PLAY_W - 12;
+      v.fillStyle = '#09090B';
+      v.fillRect(postX - 1, ly - 15, 4, 16);
+      v.fillStyle = '#CBD5E1';
+      v.fillRect(postX, ly - 14, 2, 14);
+      const wave = anim4c % 2 === 0 ? 0 : 1;
+      v.fillStyle = sim.personalBestBroken ? '#A3E635' : '#FACC15';
+      v.fillRect(postX - 9, ly - 14 + wave, 9, 6);
+      v.fillStyle = '#FFFFFF';
+      v.fillRect(postX - 7, ly - 12 + wave, 2, 2);
+    }
+  }
+
   // Layer 2: Mid-ground Steel Scaffolding & Elevator Guide Rails (0.48x scroll)
   const midTile = getParallaxMidgroundScaffolding(
     baseStratum.id,
@@ -814,6 +882,14 @@ export function renderSimulation(
       if (kind === 'BOUNCE_PAD') {
         const bActive = Boolean(cell.bounceAnim && cell.bounceAnim > 0);
         v.drawImage(getBouncePadBlockSprite(anim4, bActive), ix, iy, drawW, drawH);
+        continue;
+      }
+      if (kind === 'RESONANCE_VEIN') {
+        v.drawImage(getResonanceVeinBlockSprite((anim4 + c) & 3), ix, iy, drawW, drawH);
+        continue;
+      }
+      if (kind === 'SUPPORT_BEAM') {
+        v.drawImage(getSupportBeamBlockSprite((anim4 + r) & 3), ix, iy, drawW, drawH);
         continue;
       }
       if (kind === 'GAS_POCKET') {
@@ -1212,13 +1288,30 @@ export function renderSimulation(
   const pRow = Math.max(0, sim.gridRow);
   const pCol = Math.max(0, Math.min(GRID_COLS - 1, sim.gridCol));
 
-  // Overhead Danger Collapse Column Warning ([!])
+  // Overhead Danger Collapse Column Warning ([!] + Timing Chevron Counter Cue)
   if (sim.overheadDangerCol && !sim.finished) {
     const wx = VIRTUAL_WALL + pCol * VIRTUAL_CELL;
     const blink = fastAnim4 % 2 === 0;
-    v.fillStyle = blink ? 'rgba(225, 29, 72, 0.22)' : 'rgba(245, 158, 11, 0.12)';
+    const closeFalling = sim.overheadDangerDist <= 2.35;
+    const perfectSweetSpot = sim.overheadDangerDist <= 1.25;
+    v.fillStyle = perfectSweetSpot
+      ? 'rgba(250, 204, 21, 0.28)'
+      : blink
+        ? 'rgba(225, 29, 72, 0.22)'
+        : 'rgba(245, 158, 11, 0.12)';
     v.fillRect(wx + 2, 0, VIRTUAL_CELL - 4, Math.max(0, playerVY - 16));
     drawPixelText(v, '!', wx + 12, 6, blink ? '#FFFFFF' : '#F43F5E', { align: 'center', scale: 2 });
+    if (sim.overheadDangerDist <= 4.5 && sim.overheadCounterCooldown === 0) {
+      const ringCol = perfectSweetSpot ? '#FACC15' : closeFalling ? '#FFFFFF' : '#38BDF8';
+      drawPixelText(
+        v,
+        perfectSweetSpot ? '▲ PARRY!' : closeFalling ? '▲ [W/↑]' : '▲',
+        playerVX,
+        Math.max(18, playerVY - 24),
+        ringCol,
+        { align: 'center', scale: 1 }
+      );
+    }
   }
 
   // Active Drill Target Reticle
@@ -1538,6 +1631,19 @@ export function renderSimulation(
           emissiveCells.push({ r, c, lx, ly, radius: 30, color: '#FDE047', intensity: 0.34, rimAlpha: 0.45 });
         } else if (cell.kind === 'BOUNCE_PAD') {
           emissiveCells.push({ r, c, lx, ly, radius: 16, color: '#38BDF8', intensity: 0.14, rimAlpha: 0.22 });
+        } else if (cell.kind === 'RESONANCE_VEIN') {
+          emissiveCells.push({
+            r,
+            c,
+            lx,
+            ly,
+            radius: 22,
+            color: '#FDE047',
+            intensity: 0.24 * flickerPulse,
+            rimAlpha: 0.36,
+          });
+        } else if (cell.kind === 'SUPPORT_BEAM') {
+          emissiveCells.push({ r, c, lx, ly, radius: 14, color: '#FB923C', intensity: 0.12, rimAlpha: 0.2 });
         } else if (cell.kind === 'CONDUCTOR') {
           emissiveCells.push({ r, c, lx, ly, radius: 18, color: '#FDE047', intensity: 0.16, rimAlpha: 0.26 });
         }
@@ -1730,6 +1836,16 @@ export function renderSimulation(
   }
 
   // 5. Crisp 5x7 Pixel Bitmap Floating Callouts (always full brightness above shadow veil!)
+  if (sim.personalBestRow > 0 && sim.personalBestRow >= startR - 1 && sim.personalBestRow <= endR + 1) {
+    const recY = Math.round((sim.personalBestRow + 0.1 - topWorldRow) * VIRTUAL_CELL);
+    const labelCol = sim.personalBestBroken ? '#A3E635' : '#FACC15';
+    const labelText = sim.personalBestBroken
+      ? '★ RÉCORD SUPERADO!'
+      : `★ RÉCORD ${sim.personalBestRow}M`;
+    v.fillStyle = 'rgba(11, 12, 16, 0.85)';
+    v.fillRect(VIRTUAL_WALL + 4, recY - 12, 114, 11);
+    drawPixelText(v, labelText, VIRTUAL_WALL + 8, recY - 10, labelCol, { align: 'left', scale: 1 });
+  }
   for (const f of sim.fx.floatingTexts) {
     const fx = Math.round(VIRTUAL_WALL + f.x * VIRTUAL_CELL);
     const fy = Math.round((f.y - topWorldRow) * VIRTUAL_CELL);
@@ -2134,11 +2250,14 @@ function drawPlayer(
     }
   }
 
-  // 3. Coyote Crush Shield Dome + [W+Q/E] cue
+  // 3. Coyote Crush Shield Dome + Overhead Counter Guard Arc
   if (sim.coyoteCrushTimer > 0) {
     const parryCol = Math.floor(timeSec * 24) % 2 === 0 ? '#FFFFFF' : '#38BDF8';
     drawPixelCircle(ctx, cx, cy - 2, 16, parryCol, 2);
     drawPixelText(vSafe(ctx), 'W+Q/E', cx, cy - 25, '#FFFFFF', { align: 'center', scale: 1 });
+  } else if (sim.overheadGuardTimer > 0) {
+    drawPixelLine(ctx, cx - 10, cy - 15, cx, cy - 19, '#38BDF8', 2);
+    drawPixelLine(ctx, cx, cy - 19, cx + 10, cy - 15, '#FFFFFF', 2);
   }
 
   ctx.save();

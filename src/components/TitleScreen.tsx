@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Keyboard, Lock, Shuffle, Smartphone, Volume2, VolumeX } from 'lucide-react';
+import { BookOpen, Keyboard, Lock, Shuffle, Smartphone, Volume2, VolumeX } from 'lucide-react';
 import { ArchiveSave, ChassisId, GameMode, KeyBindings, RigUpgrades, TrialId, VisualSettings } from '../types/game';
 import { CHASSIS_LIST, STRATA } from '../data/catalog';
 import { GADGETS, RELICS, TRIAL_DEFS } from '../data/crafting';
@@ -8,6 +8,7 @@ import { formatActionKeys } from '../storage/controls';
 import { getExoRigPixelSprite } from '../engine/pixelArt';
 import { renderTitleDiorama } from '../engine/renderer';
 import { ControlsModal } from './ControlsModal';
+import { TacticalGuideModal } from './TacticalGuideModal';
 
 const OperatorPortraitThumb: React.FC<{
   chassisId: ChassisId;
@@ -130,6 +131,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onReplayIntro,
 }) => {
   const [controlsModalSection, setControlsModalSection] = useState<'KEYBOARD' | 'MOBILE' | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
   const activeChassis = CHASSIS_LIST.find((c) => c.id === archive.selectedChassis) || CHASSIS_LIST[0];
   const dioramaRef = useRef<HTMLCanvasElement | null>(null);
   const rigUpgrades = archive.rigUpgrades || {
@@ -283,6 +285,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               Intro
             </button>
           )}
+          <button
+            type="button"
+            onClick={withClick(() => setShowGuide(true))}
+            title="Manual Táctico Animado: controles, contraataque, habilidades y bloques"
+            className="pixel-btn px-2.5 py-1.5 text-[11px] font-pixel text-[#A3E635] hover:text-white flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Guía</span>
+          </button>
           <button
             type="button"
             onClick={withClick(() => setControlsModalSection('KEYBOARD'))}
@@ -749,6 +760,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           onClose={() => setControlsModalSection(null)}
         />
       )}
+      <TacticalGuideModal
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        keyBindings={keyBindings}
+      />
     </div>
   );
 };

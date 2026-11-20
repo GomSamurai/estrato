@@ -149,6 +149,8 @@ export type CellState =
   | 'GRAV_WELL'
   | 'SHOCK_MINE'
   | 'TREASURE_CACHE'
+  | 'RESONANCE_VEIN'
+  | 'SUPPORT_BEAM'
   | 'MONOLITH'
   | 'PHASE_KEY'
   | 'GHOST_ECHO'
@@ -156,6 +158,15 @@ export type CellState =
   | 'BIFURCATION_SEAL'
   | 'EXTRACTION_TUBE'
   | 'ARTIFACT_POD';
+
+export type RoomArchetype =
+  | 'STANDARD'
+  | 'NARROWS'
+  | 'TWIN_TUNNELS'
+  | 'ZIGZAG_CORRIDOR'
+  | 'OPEN_CAVERN'
+  | 'SECRET_VAULT'
+  | 'MINING_HALL';
 
 export type ColorSymbol = 'CIRCLE' | 'DIAGONALS' | 'CHEVRON' | 'CROSS' | 'RETICLE';
 
@@ -207,6 +218,7 @@ export interface ModuleDef {
   mk2Desc: string;
   glyph: string;
   unlockCost?: number;
+  minDepth?: number;
   featHint?: string;
 }
 
@@ -236,6 +248,7 @@ export interface ChassisDef {
   accentColor: string;
   accessoryStyle: CharacterAccessoryStyle;
   isStarter?: boolean;
+  minDepth?: number;
   unlockIsoCost?: number;
   unlockRequirement: string;
   maxOxygen: number;
@@ -257,6 +270,9 @@ export interface ChassisDef {
   motto?: string;
   signatureName?: string;
   signatureDesc?: string;
+  tacticalName?: string;
+  tacticalDesc?: string;
+  tacticalCooldownSec?: number;
   banter?: {
     start: string;
     deep: string;
@@ -456,6 +472,7 @@ export interface RelicDef {
   color: string;
   desc: string;
   isoCost: number;
+  minDepth?: number;
   matCost: Partial<MaterialBag>;
 }
 
@@ -467,6 +484,7 @@ export interface GadgetDef {
   color: string;
   desc: string;
   isoCost: number;
+  minDepth?: number;
   matCost: Partial<MaterialBag>;
   maxStack: number;
 }
@@ -562,7 +580,9 @@ export interface MineralSpecDef {
     | 'ACID_VAT'
     | 'GRAV_WELL'
     | 'SHOCK_MINE'
-    | 'TREASURE_CACHE';
+    | 'TREASURE_CACHE'
+    | 'RESONANCE_VEIN'
+    | 'SUPPORT_BEAM';
   name: string;
   formula: string;
   strataRange: string;
@@ -672,7 +692,7 @@ export const ORIENT_THRESHOLD_FRAMES = 4;
 export const CLIMB_HOLD_FRAMES = 7; // ~0.12s
 export const SWAP_DURATION_FRAMES = 4; // 66ms
 export const INPUT_BUFFER_FRAMES = 5;
-export const COYOTE_CRUSH_FRAMES = 9; // 150ms
+export const COYOTE_CRUSH_FRAMES = 13; // ~216ms skill anti-crush window
 export const IGNITE_FUSE_FRAMES = [72, 57, 45, 33]; // 1.20 -> 0.95 -> 0.75 -> 0.55s
 export const DETONATING_FRAMES = 6;
 export const FALL_SPEED_NORMAL = 18; // cells/s

@@ -1463,43 +1463,106 @@ export function getGravelBlockSprite(variant = 0): HTMLCanvasElement {
 
 export function getBouncePadBlockSprite(animFrame = 0, activeBounce = false): HTMLCanvasElement {
   const f = animFrame & 3;
-  const key = `BOUNCE24_${f}_${activeBounce ? 1 : 0}`;
+  const key = `GEOVALVE24_${f}_${activeBounce ? 1 : 0}`;
   const cached = getCached(key);
   if (cached) return cached;
 
   const [canvas, ctx] = createPixelCanvas(TILE_PX, TILE_PX);
   ctx.fillStyle = '#09090B';
   ctx.fillRect(0, 0, TILE_PX, TILE_PX);
-  ctx.fillStyle = '#0F172A';
+  ctx.fillStyle = '#181412';
   ctx.fillRect(1, 1, TILE_PX - 2, TILE_PX - 2);
 
-  // Steel base plate
-  ctx.fillStyle = '#334155';
-  ctx.fillRect(2, 17, 20, 5);
-  ctx.fillStyle = '#94A3B8';
-  ctx.fillRect(2, 17, 20, 1);
+  // Industrial bronze & iron steam manifold
+  ctx.fillStyle = '#57361C';
+  ctx.fillRect(2, 12, 20, 10);
+  ctx.fillStyle = '#B45309';
+  ctx.fillRect(3, 13, 18, 2);
+  ctx.fillStyle = '#475569';
+  ctx.fillRect(3, 16, 18, 5);
+  ctx.fillStyle = '#F59E0B';
+  ctx.fillRect(4, 18, 2, 2);
+  ctx.fillRect(18, 18, 2, 2);
 
-  // Coiled titanium spring
-  const compY = activeBounce ? 2 : f === 1 ? 1 : 0;
-  ctx.fillStyle = '#64748B';
-  ctx.fillRect(6, 10 + compY, 12, 7 - compY);
-  ctx.fillStyle = '#E2E8F0';
-  ctx.fillRect(6, 11 + compY, 12, 1);
-  ctx.fillRect(6, 14 + Math.min(2, compY), 12, 1);
-
-  // Glowing cyan top bumper pad + upward chevron
-  const topY = 3 + compY;
-  ctx.fillStyle = '#0284C7';
-  ctx.fillRect(2, topY, 20, 6);
+  // Pressurized exhaust grate
+  ctx.fillStyle = '#0F172A';
+  ctx.fillRect(4, 7, 16, 6);
   ctx.fillStyle = '#38BDF8';
-  ctx.fillRect(2, topY, 20, 3);
-  ctx.fillStyle = '#E0F2FE';
-  ctx.fillRect(3, topY, 18, 1);
+  for (let gx = 5; gx <= 17; gx += 4) {
+    ctx.fillRect(gx, 8, 2, 4);
+  }
 
-  ctx.fillStyle = f % 2 === 0 || activeBounce ? '#FFFFFF' : '#7DD3FC';
-  ctx.fillRect(11, topY + 2, 2, 2);
-  ctx.fillRect(9, topY + 3, 2, 1);
-  ctx.fillRect(13, topY + 3, 2, 1);
+  // Animated cyan-white pressurized steam plumes rising upward
+  const plumeLift = activeBounce ? 2 : f & 1;
+  ctx.fillStyle = '#7DD3FC';
+  ctx.fillRect(6, 4 - plumeLift, 3, 4);
+  ctx.fillRect(15, 4 - plumeLift, 3, 4);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(10, 2 - plumeLift, 4, 5);
+
+  return setCached(key, canvas);
+}
+
+export function getResonanceVeinBlockSprite(animFrame = 0): HTMLCanvasElement {
+  const f = animFrame & 3;
+  const key = `RESOVEIN24_${f}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const [canvas, ctx] = createPixelCanvas(TILE_PX, TILE_PX);
+  ctx.fillStyle = '#09090B';
+  ctx.fillRect(0, 0, TILE_PX, TILE_PX);
+  ctx.fillStyle = '#181A24';
+  ctx.fillRect(1, 1, TILE_PX - 2, TILE_PX - 2);
+  ctx.fillStyle = '#252838';
+  ctx.fillRect(2, 2, TILE_PX - 4, 4);
+
+  // Cracked piezoelectric quartz-gold veins branching diagonally
+  ctx.fillStyle = f % 2 === 0 ? '#F59E0B' : '#FACC15';
+  ctx.fillRect(4, 5, 4, 3);
+  ctx.fillRect(7, 7, 4, 3);
+  ctx.fillRect(10, 10, 5, 4);
+  ctx.fillRect(14, 13, 4, 4);
+  ctx.fillRect(6, 15, 4, 3);
+  ctx.fillStyle = f === 1 || f === 3 ? '#FFFFFF' : '#38BDF8';
+  ctx.fillRect(11, 11, 3, 2);
+  ctx.fillRect(5, 6, 2, 1);
+  ctx.fillRect(16, 15, 2, 2);
+
+  return setCached(key, canvas);
+}
+
+export function getSupportBeamBlockSprite(animFrame = 0): HTMLCanvasElement {
+  const f = animFrame & 3;
+  const key = `SUPBEAM24_${f}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const [canvas, ctx] = createPixelCanvas(TILE_PX, TILE_PX);
+  ctx.fillStyle = '#09090B';
+  ctx.fillRect(0, 0, TILE_PX, TILE_PX);
+  ctx.fillStyle = '#1C1917';
+  ctx.fillRect(1, 1, TILE_PX - 2, TILE_PX - 2);
+
+  // Top & bottom steel H-beam flanges
+  ctx.fillStyle = '#78716C';
+  ctx.fillRect(2, 2, 20, 4);
+  ctx.fillRect(2, 18, 20, 4);
+  ctx.fillStyle = '#D6D3D1';
+  ctx.fillRect(2, 2, 20, 1);
+  ctx.fillRect(2, 18, 20, 1);
+
+  // Diagonal hazard stripes & central hydraulic jack piston
+  ctx.fillStyle = '#F59E0B';
+  ctx.fillRect(4, 3, 3, 2);
+  ctx.fillRect(10, 3, 3, 2);
+  ctx.fillRect(16, 3, 3, 2);
+  ctx.fillStyle = '#44403C';
+  ctx.fillRect(8, 6, 8, 12);
+  ctx.fillStyle = '#A8A29E';
+  ctx.fillRect(10, 6, 4, 12);
+  ctx.fillStyle = f % 2 === 0 ? '#38BDF8' : '#A3E635';
+  ctx.fillRect(11, 11, 2, 2);
 
   return setCached(key, canvas);
 }

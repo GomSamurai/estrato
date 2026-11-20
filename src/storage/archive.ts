@@ -313,6 +313,10 @@ export function getMaxBeltSlots(archive: ArchiveSave): number {
   return Math.min(3, 1 + (archive.infra?.beltSlots || 0));
 }
 
+export function getBestDepth(archive: ArchiveSave): number {
+  return Math.max(archive.maxDepthCampaign || 0, archive.maxDepthEndless || 0);
+}
+
 export function canAffordMaterials(bag: MaterialBag, cost: Partial<MaterialBag>): boolean {
   for (const [k, amt] of Object.entries(cost)) {
     const id = k as MaterialId;
@@ -343,6 +347,7 @@ export function craftRelic(archive: ArchiveSave, relicId: RelicId): ArchiveSave 
   const def = RELICS.find((r) => r.id === relicId);
   if (!def) return null;
   if (archive.craftedRelics.includes(relicId)) return null;
+  if (getBestDepth(archive) < (def.minDepth ?? 0)) return null;
   if (archive.isotopes < def.isoCost || !canAffordMaterials(archive.materials, def.matCost)) return null;
 
   const maxSlots = getMaxRelicSlots(archive);
@@ -379,6 +384,7 @@ export function toggleEquipRelic(archive: ArchiveSave, relicId: RelicId): Archiv
 export function craftGadget(archive: ArchiveSave, gadgetId: GadgetId): ArchiveSave | null {
   const def = GADGETS.find((g) => g.id === gadgetId);
   if (!def) return null;
+  if (getBestDepth(archive) < (def.minDepth ?? 0)) return null;
   const owned = archive.gadgetInventory[gadgetId] || 0;
   if (owned >= def.maxStack) return null;
   if (archive.isotopes < def.isoCost || !canAffordMaterials(archive.materials, def.matCost)) return null;
@@ -843,19 +849,19 @@ export function applyRunResultToArchive(
   if (summary.depthMeters >= 400) {
     unlockChassis('MKII_ESPECTRO', 'Sable · Espectro');
   }
-  if (next.totalSlagDestroyed >= 120) {
+  if (next.totalSlagDestroyed >= 220 && (getBestDepth(next) >= 350 || summary.depthMeters >= 350)) {
     unlockChassis('MKIII_YUNQUE', 'Bram · Yunque');
   }
-  if (summary.maxChain >= 4 || summary.depthMeters >= 750) {
+  if ((summary.maxChain >= 4 && getBestDepth(next) >= 550) || summary.depthMeters >= 750) {
     unlockChassis('MKVII_PIRO', 'Ignis · Crisol');
   }
-  if (summary.parries >= 3 || ['A', 'S', 'SS', 'SSS'].includes(summary.peakStyleRank || 'D')) {
+  if ((summary.parries >= 6 && getBestDepth(next) >= 800) || summary.depthMeters >= 1000) {
     unlockChassis('MKIV_METRONOMO', 'Lyra · Cadencia');
   }
-  if ((nextProgress.bossesDefeated || 0) >= 2 || summary.depthMeters >= 1200) {
+  if ((nextProgress.bossesDefeated || 0) >= 2 || summary.depthMeters >= 1400) {
     unlockChassis('MKV_TITAN', 'Orson · Titán');
   }
-  if ((next.craftedRelics || []).length >= 2 || summary.depthMeters >= 1800) {
+  if (summary.depthMeters >= 2000) {
     unlockChassis('MKVI_QUANTUM', 'Vex · Cuántico');
   }
 
@@ -867,6 +873,7 @@ export function buyChassisUnlock(archive: ArchiveSave, id: ChassisId): ArchiveSa
   const def = CHASSIS_LIST.find((c) => c.id === id);
   if (!def) return null;
   if (archive.unlockedChassis.includes(id)) return null;
+  if (getBestDepth(archive) < (def.minDepth ?? 0)) return null;
   const cost = def.unlockIsoCost ?? 0;
   if (cost <= 0 || archive.isotopes < cost) return null;
   const next: ArchiveSave = {
