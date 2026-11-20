@@ -286,6 +286,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [controlsModalSection, setControlsModalSection] = useState<'KEYBOARD' | 'MOBILE' | null>(null);
   const controlsModalOpenRef = useRef(false);
   controlsModalOpenRef.current = controlsModalSection !== null;
+  const showGuideOpenRef = useRef(false);
+  showGuideOpenRef.current = showGuide;
   const [sliderNub, setSliderNub] = useState<{ x: number; y: number; active: boolean }>({
     x: 0,
     y: 0,
@@ -591,6 +593,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (controlsModalOpenRef.current) return;
+      if (showGuideOpenRef.current) {
+        if (e.code === 'Escape') {
+          e.preventDefault();
+          setShowGuide(false);
+        }
+        return;
+      }
       const code = e.code;
       const kb = keyBindingsRef.current;
       if (
