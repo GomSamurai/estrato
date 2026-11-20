@@ -2346,10 +2346,23 @@ class SoundEngine {
         ? 380
         : speaker === 'KAI'
         ? 660
+        : speaker === 'DR_LINDQVIST'
+        ? 470
+        : speaker === 'REYES'
+        ? 310
+        : speaker === 'ECHO_01'
+        ? 740
+        : speaker === 'CORO_ABISAL'
+        ? 165
         : 220;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    osc.type = speaker === 'ARQUITECTO' ? 'sawtooth' : 'square';
+    osc.type =
+      speaker === 'ARQUITECTO' || speaker === 'CORO_ABISAL'
+        ? 'sawtooth'
+        : speaker === 'DR_LINDQVIST' || speaker === 'ECHO_01'
+        ? 'triangle'
+        : 'square';
     osc.frequency.setValueAtTime(base + (Math.random() - 0.5) * 45, now);
     gain.gain.setValueAtTime(0.025, now);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.032);

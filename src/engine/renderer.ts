@@ -24,9 +24,11 @@ import {
   getAcidVatBlockSprite,
   getArchitectCeilingTile,
   getArtifactPodSprite,
+  getBioSporeBlockSprite,
   getBouncePadBlockSprite,
   getChronolithBossSprite,
   getConductorBlockSprite,
+  getCryoSlagBlockSprite,
   getCryoVentBlockSprite,
   getCrystalBlockSprite,
   getCrystalWardenSprite,
@@ -39,9 +41,11 @@ import {
   getGhostEchoBlockSprite,
   getGravelBlockSprite,
   getGravWellBlockSprite,
+  getHeavyOreBlockSprite,
   getIgnitingBlockSprite,
   getLoomAnchorSprite,
   getMagmaNodeBlockSprite,
+  getMagnetCoilBlockSprite,
   getMineralBlockSprite,
   getMonolithBlockSprite,
   getOxygenPodSprite,
@@ -50,9 +54,13 @@ import {
   getPendulumBossSprite,
   getPhaseBlockSprite,
   getPhaseKeyBlockSprite,
+  getPorousSpongeBlockSprite,
+  getPrismCoreBlockSprite,
+  getPyriteChargeBlockSprite,
   getResonanceVeinBlockSprite,
   getRivetBlockSprite,
   getSealGateSprite,
+  getSeismicBellBlockSprite,
   getShaftWallStrip,
   getSupportBeamBlockSprite,
   getShockMineBlockSprite,
@@ -922,6 +930,54 @@ export function renderSimulation(
         v.drawImage(getTreasureCacheBlockSprite(anim4), ix, iy, drawW, drawH);
         continue;
       }
+      if (kind === 'HEAVY_ORE') {
+        v.drawImage(getHeavyOreBlockSprite(colorHex, Math.max(0, 3 - cell.hp), anim4), ix, iy, drawW, drawH);
+        if (hitFlash) {
+          v.fillStyle = 'rgba(255,255,255,0.45)';
+          v.fillRect(ix, iy, drawW, drawH);
+        }
+        continue;
+      }
+      if (kind === 'PRISM_CORE') {
+        v.drawImage(getPrismCoreBlockSprite(anim4), ix, iy, drawW, drawH);
+        continue;
+      }
+      if (kind === 'PYRITE_CHARGE') {
+        v.drawImage(getPyriteChargeBlockSprite(fastAnim4), ix, iy, drawW, drawH);
+        continue;
+      }
+      if (kind === 'POROUS_SPONGE') {
+        v.drawImage(getPorousSpongeBlockSprite(colorHex, anim4), ix, iy, drawW, drawH);
+        continue;
+      }
+      if (kind === 'MAGNET_COIL') {
+        v.drawImage(getMagnetCoilBlockSprite(anim4), ix, iy, drawW, drawH);
+        if (hitFlash) {
+          v.fillStyle = 'rgba(255,255,255,0.45)';
+          v.fillRect(ix, iy, drawW, drawH);
+        }
+        continue;
+      }
+      if (kind === 'CRYO_SLAG') {
+        v.drawImage(getCryoSlagBlockSprite(Math.max(0, 2 - cell.hp), anim4), ix, iy, drawW, drawH);
+        if (hitFlash) {
+          v.fillStyle = 'rgba(255,255,255,0.45)';
+          v.fillRect(ix, iy, drawW, drawH);
+        }
+        continue;
+      }
+      if (kind === 'SEISMIC_BELL') {
+        v.drawImage(getSeismicBellBlockSprite(anim4), ix, iy, drawW, drawH);
+        if (hitFlash) {
+          v.fillStyle = 'rgba(255,255,255,0.45)';
+          v.fillRect(ix, iy, drawW, drawH);
+        }
+        continue;
+      }
+      if (kind === 'BIO_SPORE') {
+        v.drawImage(getBioSporeBlockSprite(anim4), ix, iy, drawW, drawH);
+        continue;
+      }
       if (kind === 'ARTIFACT_POD') {
         const art = ARTIFACTS.find((a) => a.id === cell.artifactId) || ARTIFACTS[0];
         v.drawImage(getArtifactPodSprite(art.color, art.accent, anim4), ix, iy, drawW, drawH);
@@ -1627,6 +1683,19 @@ export function renderSimulation(
           });
         } else if (cell.kind === 'TREASURE_CACHE') {
           emissiveCells.push({ r, c, lx, ly, radius: 22, color: '#FACC15', intensity: 0.22, rimAlpha: 0.32 });
+        } else if (cell.kind === 'PRISM_CORE') {
+          const pCols = ['#F43F5E', '#38BDF8', '#FACC15', '#4ADE80'];
+          emissiveCells.push({ r, c, lx, ly, radius: 26, color: pCols[anim4 & 3], intensity: 0.26, rimAlpha: 0.38 });
+        } else if (cell.kind === 'PYRITE_CHARGE') {
+          emissiveCells.push({ r, c, lx, ly, radius: 20, color: '#F97316', intensity: 0.22 * flickerPulse, rimAlpha: 0.34 });
+        } else if (cell.kind === 'MAGNET_COIL') {
+          emissiveCells.push({ r, c, lx, ly, radius: 24, color: '#38BDF8', intensity: 0.2, rimAlpha: 0.32 });
+        } else if (cell.kind === 'CRYO_SLAG') {
+          emissiveCells.push({ r, c, lx, ly, radius: 20, color: '#67E8F9', intensity: 0.18, rimAlpha: 0.28 });
+        } else if (cell.kind === 'SEISMIC_BELL') {
+          emissiveCells.push({ r, c, lx, ly, radius: 24, color: '#FBBF24', intensity: 0.2, rimAlpha: 0.3 });
+        } else if (cell.kind === 'BIO_SPORE') {
+          emissiveCells.push({ r, c, lx, ly, radius: 28, color: '#4ADE80', intensity: 0.28 * flickerPulse, rimAlpha: 0.42 });
         } else if (cell.kind === 'ARTIFACT_POD') {
           emissiveCells.push({ r, c, lx, ly, radius: 30, color: '#FDE047', intensity: 0.34, rimAlpha: 0.45 });
         } else if (cell.kind === 'BOUNCE_PAD') {

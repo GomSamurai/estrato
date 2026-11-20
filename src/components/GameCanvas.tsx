@@ -276,6 +276,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [paused, setPaused] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [hudInfoBanner, setHudInfoBanner] = useState<{ title: string; desc: string; color: string } | null>(null);
+  const hudInfoTimerRef = useRef<number | null>(null);
+  const showHudInfo = (title: string, desc: string, color = '#38BDF8') => {
+    setHudInfoBanner({ title, desc, color });
+    if (hudInfoTimerRef.current !== null) window.clearTimeout(hudInfoTimerRef.current);
+    hudInfoTimerRef.current = window.setTimeout(() => setHudInfoBanner(null), 4200);
+  };
   const [controlsModalSection, setControlsModalSection] = useState<'KEYBOARD' | 'MOBILE' | null>(null);
   const controlsModalOpenRef = useRef(false);
   controlsModalOpenRef.current = controlsModalSection !== null;
@@ -1566,9 +1573,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               {/* Operator Active Signature Resonance */}
               <div>
                 <div className="flex items-baseline justify-between gap-2 mb-1">
-                  <span className="font-pixel text-[9px] text-[#8E92A4] truncate" title={chassisDef.signatureDesc}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      showHudInfo(
+                        `✦ ${chassisDef.signatureName || 'RESONANCIA'} [F]`,
+                        `${chassisDef.signatureDesc} (Carga con cadenas y perforación).`,
+                        chassisDef.accentColor
+                      )
+                    }
+                    className="font-pixel text-[9px] text-[#8E92A4] hover:text-white truncate text-left cursor-pointer"
+                    title={chassisDef.signatureDesc}
+                  >
                     ✦ {chassisDef.signatureName || 'RESONANCIA'}
-                  </span>
+                  </button>
                   {hud.resonanceCharge >= 100 ? (
                     <button
                       type="button"
@@ -1599,14 +1617,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     }}
                   />
                 </div>
+                <div className="text-[10px] text-[#71717A] mt-0.5 line-clamp-1">{chassisDef.signatureDesc}</div>
               </div>
 
               {/* Operator Active Second Tactical Ability */}
               <div>
                 <div className="flex items-baseline justify-between gap-2 mb-1">
-                  <span className="font-pixel text-[9px] text-[#8E92A4] truncate" title={chassisDef.tacticalDesc}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      showHudInfo(
+                        `◈ ${chassisDef.tacticalName || 'TÁCTICA'} [G]`,
+                        `${chassisDef.tacticalDesc} (Habilidad activa de recarga rápida).`,
+                        '#A3E635'
+                      )
+                    }
+                    className="font-pixel text-[9px] text-[#8E92A4] hover:text-white truncate text-left cursor-pointer"
+                    title={chassisDef.tacticalDesc}
+                  >
                     ◈ {chassisDef.tacticalName || 'TÁCTICA'}
-                  </span>
+                  </button>
                   {hud.tacticalReadyRatio >= 1 ? (
                     <button
                       type="button"
@@ -1630,6 +1660,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     }}
                   />
                 </div>
+                <div className="text-[10px] text-[#71717A] mt-0.5 line-clamp-1">{chassisDef.tacticalDesc}</div>
               </div>
             </div>
 
@@ -2399,6 +2430,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     )}
                   </div>
 
+                  {/* Ficha Táctica del Operador */}
+                  <div className="space-y-1.5 border-t-2 border-[#232530] pt-3 text-[11px]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-pixel text-[9px] text-[#38BDF8]">FICHA TÁCTICA · {chassisDef.callsign}</span>
+                      <span className="font-mono text-[10px] text-[#8E92A4]">{chassisDef.role}</span>
+                    </div>
+                    <div className="p-2 bg-[#0E1017] border border-[#232530] space-y-1">
+                      <div className="text-[#D4D4D8]">
+                        <strong style={{ color: chassisDef.accentColor }}>{chassisDef.traitTitle}:</strong> {chassisDef.traitDesc}
+                      </div>
+                      <div className="text-[#BAE6FD]">
+                        <strong style={{ color: chassisDef.accentColor }}>✦ {chassisDef.signatureName || 'Resonancia'} [F]:</strong>{' '}
+                        {chassisDef.signatureDesc}
+                      </div>
+                      <div className="text-[#BEF264]">
+                        <strong className="text-[#A3E635]">◈ {chassisDef.tacticalName || 'Táctica'} [G]:</strong>{' '}
+                        {chassisDef.tacticalDesc}
+                      </div>
+                      {hud.belt.some(Boolean) && (
+                        <div className="pt-1 border-t border-[#232530] space-y-0.5">
+                          <div className="font-pixel text-[8px] text-[#FACC15]">CINTURÓN [1 / 2 / 3]</div>
+                          {hud.belt.map((gid, slot) => {
+                            const g = gid ? GADGETS.find((x) => x.id === gid) : null;
+                            if (!g) return null;
+                            return (
+                              <div key={slot} className="text-[10px] text-[#D4D4D8]">
+                                <span style={{ color: g.color }}>[{slot + 1}] {g.glyph} {g.name}:</span> {g.desc}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   {hud.modules.length > 0 && (
                     <div className="space-y-2 border-t-2 border-[#232530] pt-3">
                       <div className="font-pixel text-[10px] text-[#8E92A4]">MÓDULOS ACOPLADOS</div>
@@ -2597,21 +2663,59 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             })()}
           </div>
 
+          {/* Non-Blocking Interactive HUD Ability / UI Explainer Strip */}
+          {hudInfoBanner && !paused && !summary && (
+            <div
+              className="w-full max-w-[520px] pt-1.5 shrink-0 cursor-pointer"
+              onClick={() => setHudInfoBanner(null)}
+            >
+              <div
+                className="px-3 py-1.5 bg-[#12131A]/95 border text-[11px] leading-snug flex items-start justify-between gap-2"
+                style={{ borderColor: hudInfoBanner.color }}
+              >
+                <div className="min-w-0">
+                  <span className="font-pixel text-[9px] mr-1.5" style={{ color: hudInfoBanner.color }}>
+                    {hudInfoBanner.title}:
+                  </span>
+                  <span className="text-[#E4E4E7]">{hudInfoBanner.desc}</span>
+                </div>
+                <span className="font-pixel text-[9px] text-[#71717A] shrink-0">✕</span>
+              </div>
+            </div>
+          )}
+
           {/* Fixed Zero-Overlap Mobile Tactical Action Dock */}
           {!paused && !summary && (
             <div className="lg:hidden w-full max-w-[520px] pt-1.5 flex items-center justify-between gap-1.5 shrink-0 touch-game-surface">
-              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto no-scrollbar">
                 <button
                   type="button"
-                  disabled={!isOverdriveReady}
                   onTouchStart={(e) => {
                     e.preventDefault();
-                    if (isOverdriveReady) edgeQueue.current.overdrive = true;
+                    if (isOverdriveReady) {
+                      edgeQueue.current.overdrive = true;
+                    } else {
+                      soundEngine.playUiClick();
+                      showHudInfo(
+                        '⚡ OVERDRIVE SÍSMICO',
+                        'Al 100% pausa el drenaje de O₂, rompe escoria de 1 golpe y perfora varios bloques seguidos.',
+                        '#FACC15'
+                      );
+                    }
                   }}
                   onClick={() => {
-                    if (isOverdriveReady) edgeQueue.current.overdrive = true;
+                    if (isOverdriveReady) {
+                      edgeQueue.current.overdrive = true;
+                    } else {
+                      soundEngine.playUiClick();
+                      showHudInfo(
+                        '⚡ OVERDRIVE SÍSMICO',
+                        'Al 100% pausa el drenaje de O₂, rompe escoria de 1 golpe y perfora varios bloques seguidos.',
+                        '#FACC15'
+                      );
+                    }
                   }}
-                  className={`relative overflow-hidden pixel-btn px-2 py-1.5 font-pixel text-[9px] shrink-0 ${
+                  className={`relative overflow-hidden pixel-btn px-2 py-1.5 font-pixel text-[9px] shrink-0 cursor-pointer ${
                     isOverdriveReady
                       ? 'border-[#FACC15] text-[#FACC15] animate-pulse'
                       : isOverdriveActive
@@ -2625,13 +2729,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
                 <button
                   type="button"
-                  disabled={hud.resonanceCharge < 100}
                   onTouchStart={(e) => {
                     e.preventDefault();
-                    simRef.current?.triggerOperatorResonance();
+                    if (hud.resonanceCharge >= 100) {
+                      simRef.current?.triggerOperatorResonance();
+                    } else {
+                      soundEngine.playUiClick();
+                      showHudInfo(
+                        `✦ ${chassisDef.signatureName || 'RESONANCIA'}`,
+                        `${chassisDef.signatureDesc} (Cargas con cadenas y perforación).`,
+                        chassisDef.accentColor
+                      );
+                    }
                   }}
-                  onClick={() => simRef.current?.triggerOperatorResonance()}
-                  className={`relative overflow-hidden pixel-btn px-2 py-1.5 font-pixel text-[9px] shrink-0 ${
+                  onClick={() => {
+                    if (hud.resonanceCharge >= 100 && simRef.current?.triggerOperatorResonance()) return;
+                    soundEngine.playUiClick();
+                    showHudInfo(
+                      `✦ ${chassisDef.signatureName || 'RESONANCIA'}`,
+                      `${chassisDef.signatureDesc} (Cargas con cadenas y perforación).`,
+                      chassisDef.accentColor
+                    );
+                  }}
+                  className={`relative overflow-hidden pixel-btn px-2 py-1.5 font-pixel text-[9px] shrink-0 cursor-pointer ${
                     hud.resonanceCharge >= 100 ? 'animate-pulse text-white' : 'border-[#2B2D38] text-[#A1A1AA]'
                   }`}
                   style={
@@ -2649,13 +2769,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
                 <button
                   type="button"
-                  disabled={hud.tacticalReadyRatio < 1}
                   onTouchStart={(e) => {
                     e.preventDefault();
-                    simRef.current?.triggerOperatorTactical();
+                    if (hud.tacticalReadyRatio >= 1) {
+                      simRef.current?.triggerOperatorTactical();
+                    } else {
+                      soundEngine.playUiClick();
+                      showHudInfo(
+                        `◈ ${chassisDef.tacticalName || 'TÁCTICA'}`,
+                        `${chassisDef.tacticalDesc} (Habilidad activa de recarga rápida).`,
+                        '#A3E635'
+                      );
+                    }
                   }}
-                  onClick={() => simRef.current?.triggerOperatorTactical()}
-                  className={`relative overflow-hidden pixel-btn px-2 py-1.5 font-pixel text-[9px] shrink-0 ${
+                  onClick={() => {
+                    if (hud.tacticalReadyRatio >= 1 && simRef.current?.triggerOperatorTactical()) return;
+                    soundEngine.playUiClick();
+                    showHudInfo(
+                      `◈ ${chassisDef.tacticalName || 'TÁCTICA'}`,
+                      `${chassisDef.tacticalDesc} (Habilidad activa de recarga rápida).`,
+                      '#A3E635'
+                    );
+                  }}
+                  className={`relative overflow-hidden pixel-btn px-2 py-1.5 font-pixel text-[9px] shrink-0 cursor-pointer ${
                     hud.tacticalReadyRatio >= 1
                       ? 'border-[#A3E635] text-[#A3E635] animate-pulse'
                       : 'border-[#2B2D38] text-[#A1A1AA]'
@@ -2680,13 +2816,39 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         simRef.current?.useBeltGadget(slot);
                       }}
                       onClick={() => simRef.current?.useBeltGadget(slot)}
-                      className="pixel-btn px-2 py-1.5 text-[9px] font-mono text-white bg-[#12131A] shrink-0"
+                      className="pixel-btn px-2 py-1.5 text-[9px] font-mono text-white bg-[#12131A] shrink-0 cursor-pointer"
                       style={{ borderColor: g.color }}
+                      title={`${g.name}: ${g.desc}`}
                     >
                       {g.glyph}
                     </button>
                   );
                 })}
+
+                <button
+                  type="button"
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    soundEngine.playUiClick();
+                    showHudInfo(
+                      'LEYENDA HUD',
+                      '⚡ Overdrive · ✦ Resonancia · ◈ Táctica · 🛡️ Absorbe 1 aplastamiento. Toca cualquier botón o abre Manual Táctico.',
+                      '#38BDF8'
+                    );
+                  }}
+                  onClick={() => {
+                    soundEngine.playUiClick();
+                    showHudInfo(
+                      'LEYENDA HUD',
+                      '⚡ Overdrive · ✦ Resonancia · ◈ Táctica · 🛡️ Absorbe 1 aplastamiento. Toca cualquier botón o abre Manual Táctico.',
+                      '#38BDF8'
+                    );
+                  }}
+                  aria-label="Explicación del HUD"
+                  className="pixel-btn px-1.5 py-1.5 font-pixel text-[9px] border-[#38BDF8]/60 text-[#38BDF8] shrink-0 cursor-pointer"
+                >
+                  ?
+                </button>
               </div>
 
               {touchMode === 'GESTURES' && (

@@ -38,7 +38,7 @@ import {
   MATERIALS,
   RELICS,
 } from '../data/crafting';
-import { CAMPAIGN_CHAPTERS, SPEAKER_PROFILES, STORY_TRANSMISSIONS } from '../data/story';
+import { CAMPAIGN_CHAPTERS, NPC_DOSSIERS, SPEAKER_PROFILES, STORY_TRANSMISSIONS } from '../data/story';
 import {
   buyChassisUnlock,
   canAffordMaterials,
@@ -63,9 +63,11 @@ import { createScarfNodes, stepScarfNodes } from '../engine/fx';
 import {
   getAcidVatBlockSprite,
   getArtifactIconSprite,
+  getBioSporeBlockSprite,
   getBouncePadBlockSprite,
   getCharacterPortraitSprite,
   getConductorBlockSprite,
+  getCryoSlagBlockSprite,
   getCryoVentBlockSprite,
   getCrystalBlockSprite,
   getExoRigPixelSprite,
@@ -73,12 +75,18 @@ import {
   getGeodeBlockSprite,
   getGravelBlockSprite,
   getGravWellBlockSprite,
+  getHeavyOreBlockSprite,
   getMagmaNodeBlockSprite,
+  getMagnetCoilBlockSprite,
   getMaterialIconSprite,
   getMineralBlockSprite,
   getOxygenPodSprite,
   getPhaseBlockSprite,
+  getPorousSpongeBlockSprite,
+  getPrismCoreBlockSprite,
+  getPyriteChargeBlockSprite,
   getResonanceVeinBlockSprite,
+  getSeismicBellBlockSprite,
   getShockMineBlockSprite,
   getSlagBlockSprite,
   getSupportBeamBlockSprite,
@@ -105,7 +113,7 @@ type ArchiveTab =
   | 'CAMPAIGN'
   | 'ARTIFACTS'
   | 'DISCOVERIES';
-type DiscoveryFilter = 'ALL' | 'MINERALS' | 'LORE' | 'CODEX';
+type DiscoveryFilter = 'ALL' | 'MINERALS' | 'LORE' | 'NPCS' | 'CODEX';
 type ModuleFilter = 'ALL' | 'PIROLITICO' | 'BALISTICO' | 'PARASITO' | 'CUANTICO' | 'OVERCHARGE';
 type PreviewMode = 'IDLE' | 'WALK' | 'DRILL_STRIKE' | 'OVERDRIVE';
 
@@ -292,6 +300,14 @@ const MineralSpriteThumb: React.FC<{
           else if (kind === 'GRAV_WELL') spr = getGravWellBlockSprite(f);
           else if (kind === 'SHOCK_MINE') spr = getShockMineBlockSprite(f, f >= 2);
           else if (kind === 'TREASURE_CACHE') spr = getTreasureCacheBlockSprite(f);
+          else if (kind === 'HEAVY_ORE') spr = getHeavyOreBlockSprite(STRATA[0].blockColors[1], 1, f);
+          else if (kind === 'PRISM_CORE') spr = getPrismCoreBlockSprite(f);
+          else if (kind === 'PYRITE_CHARGE') spr = getPyriteChargeBlockSprite(f);
+          else if (kind === 'POROUS_SPONGE') spr = getPorousSpongeBlockSprite(STRATA[0].blockColors[2], f);
+          else if (kind === 'MAGNET_COIL') spr = getMagnetCoilBlockSprite(f);
+          else if (kind === 'CRYO_SLAG') spr = getCryoSlagBlockSprite(0, f);
+          else if (kind === 'SEISMIC_BELL') spr = getSeismicBellBlockSprite(f);
+          else if (kind === 'BIO_SPORE') spr = getBioSporeBlockSprite(f);
           else spr = getMineralBlockSprite(1, STRATA[0].blockColors[0], 0, 0, 0, false);
 
           ctx.globalAlpha = discovered ? 1 : 0.3;
@@ -1734,7 +1750,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                     <div>
                       <h1 className="font-display text-3xl font-bold text-white">Archivo Geológico y Códice</h1>
                       <p className="text-sm text-[#A1A1AA] mt-1">
-                        Los 16 minerales y dispositivos del pozo, 16 registros históricos y códice vertical completo.
+                        Los {MINERAL_SPECS.length} minerales y dispositivos del pozo, {LORE_FRAGMENTS.length} registros históricos, {NPC_DOSSIERS.length} dossiers y códice vertical completo.
                       </p>
                     </div>
 
@@ -1744,6 +1760,7 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                           ['ALL', 'Todo'],
                           ['MINERALS', `Minerales (${MINERAL_SPECS.length})`],
                           ['LORE', `Bitácora (${LORE_FRAGMENTS.length})`],
+                          ['NPCS', `Dossiers (${NPC_DOSSIERS.length})`],
                           ['CODEX', `Códice (${CODEX_ENTRIES.length})`],
                         ] as [DiscoveryFilter, string][]
                       ).map(([fid, flabel]) => (
@@ -1874,6 +1891,76 @@ export const ArchiveHub: React.FC<ArchiveHubProps> = ({
                                   {found ? `«${frag.excerpt}»` : `Condición: ${frag.triggerHint}`}
                                 </p>
                               </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+
+                  {/* NPC & Faction Dossiers */}
+                  {(discoveryFilter === 'ALL' || discoveryFilter === 'NPCS') && (
+                    <section className="space-y-4">
+                      <div className="flex items-baseline justify-between">
+                        <h2 className="font-display text-2xl font-bold text-white">Dossiers Clasificados · Personal del Pozo</h2>
+                        <span className="font-pixel text-[11px] tabular-nums text-[#A1A1AA]">
+                          {NPC_DOSSIERS.length} EXPEDIENTES
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {NPC_DOSSIERS.map((npc) => {
+                          const seenIds = new Set(archive.seenStoryIds || []);
+                          const best = getBestDepth(archive);
+                          const unlocked =
+                            npc.unlockDepth === 0 ||
+                            best >= npc.unlockDepth ||
+                            STORY_TRANSMISSIONS.some((tx) => tx.speaker === npc.speaker && seenIds.has(tx.id));
+                          const prof = SPEAKER_PROFILES[npc.speaker];
+                          return (
+                            <div
+                              key={npc.speaker}
+                              className={`pixel-panel p-4 space-y-2.5 ${unlocked ? '' : 'opacity-70'}`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <canvas
+                                  ref={(el) => {
+                                    if (!el) return;
+                                    const ctx = el.getContext('2d');
+                                    if (!ctx) return;
+                                    ctx.imageSmoothingEnabled = false;
+                                    ctx.clearRect(0, 0, 48, 48);
+                                    ctx.globalAlpha = unlocked ? 1 : 0.3;
+                                    ctx.drawImage(getCharacterPortraitSprite(npc.speaker, 0), 0, 0, 48, 48);
+                                    ctx.globalAlpha = 1;
+                                  }}
+                                  width={48}
+                                  height={48}
+                                  className="w-12 h-12 bg-[#0D0E14] border border-[#2B2D38] pixel-canvas shrink-0"
+                                />
+                                <div className="min-w-0 flex-1 space-y-0.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <h3 className="font-display text-xl font-bold text-white truncate">
+                                      {unlocked ? npc.callsign : `Transmisión Cifrada (${npc.unlockDepth}m)`}
+                                    </h3>
+                                    <span className="font-pixel text-[9px] shrink-0" style={{ color: prof.color }}>
+                                      {prof.freq}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs font-mono text-[#A1A1AA]">
+                                    {unlocked ? `${npc.role} · ${npc.faction}` : `Descifrar a los ${npc.unlockDepth} m de profundidad`}
+                                  </div>
+                                  <div className="text-[10px] font-pixel text-[#38BDF8]">{unlocked ? npc.status : 'BLOQUEADO'}</div>
+                                </div>
+                              </div>
+                              {unlocked && (
+                                <>
+                                  <p className="text-xs text-[#D4D4D8] leading-relaxed">{npc.summary}</p>
+                                  <div className="p-2.5 bg-[#110F1A] border-l-2 border-[#C084FC] text-xs text-[#E9D5FF]">
+                                    <strong>Registro oculto:</strong> {npc.secretNote}
+                                  </div>
+                                </>
+                              )}
                             </div>
                           );
                         })}

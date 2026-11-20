@@ -157,7 +157,15 @@ export type CellState =
   | 'BREACH_SEAL'
   | 'BIFURCATION_SEAL'
   | 'EXTRACTION_TUBE'
-  | 'ARTIFACT_POD';
+  | 'ARTIFACT_POD'
+  | 'HEAVY_ORE'
+  | 'PRISM_CORE'
+  | 'PYRITE_CHARGE'
+  | 'POROUS_SPONGE'
+  | 'MAGNET_COIL'
+  | 'CRYO_SLAG'
+  | 'SEISMIC_BELL'
+  | 'BIO_SPORE';
 
 export type RoomArchetype =
   | 'STANDARD'
@@ -398,7 +406,26 @@ export interface OperatorMasteryRecord {
   resonanceUses: number;
 }
 
-export type StorySpeaker = 'VANCE' | 'SOLER' | 'KAI' | 'ARQUITECTO';
+export type StorySpeaker =
+  | 'VANCE'
+  | 'SOLER'
+  | 'KAI'
+  | 'ARQUITECTO'
+  | 'DR_LINDQVIST'
+  | 'REYES'
+  | 'ECHO_01'
+  | 'CORO_ABISAL';
+
+export interface NpcDossierDef {
+  speaker: StorySpeaker;
+  callsign: string;
+  role: string;
+  faction: string;
+  status: string;
+  unlockDepth: number;
+  summary: string;
+  secretNote: string;
+}
 
 export type HazardType =
   | 'NONE'
@@ -435,7 +462,9 @@ export interface StoryTransmission {
     | 'ARCHITECT_INTRO'
     | 'ARCHITECT_DEFEAT'
     | 'CHRONOLITH_INTRO'
-    | 'CHRONOLITH_DEFEAT';
+    | 'CHRONOLITH_DEFEAT'
+    | 'DIRECTOR_LOW_O2'
+    | 'DIRECTOR_HIGH_STREAK';
   title: string;
   lines: string[];
   choices?: StoryChoice[];
@@ -582,7 +611,15 @@ export interface MineralSpecDef {
     | 'SHOCK_MINE'
     | 'TREASURE_CACHE'
     | 'RESONANCE_VEIN'
-    | 'SUPPORT_BEAM';
+    | 'SUPPORT_BEAM'
+    | 'HEAVY_ORE'
+    | 'PRISM_CORE'
+    | 'PYRITE_CHARGE'
+    | 'POROUS_SPONGE'
+    | 'MAGNET_COIL'
+    | 'CRYO_SLAG'
+    | 'SEISMIC_BELL'
+    | 'BIO_SPORE';
   name: string;
   formula: string;
   strataRange: string;

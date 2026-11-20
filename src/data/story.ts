@@ -1,9 +1,33 @@
-import { CampaignChapterDef, StorySpeaker, StoryTransmission } from '../types/game';
+import { CampaignChapterDef, NpcDossierDef, StorySpeaker, StoryTransmission } from '../types/game';
 
 export const SPEAKER_PROFILES: Record<
   StorySpeaker,
   { name: string; title: string; color: string; freq: string }
 > = {
+  DR_LINDQVIST: {
+    name: 'Dra. Astrid Lindqvist',
+    title: 'Xeno-Arqueóloga · Expedición Cero',
+    color: '#A78BFA',
+    freq: 'ELF-14.2 Hz (eco)',
+  },
+  REYES: {
+    name: 'Comandante Reyes',
+    title: 'Auditoría Interna HELIOS',
+    color: '#FB7185',
+    freq: 'SEC-99.4 MHz',
+  },
+  ECHO_01: {
+    name: 'ECO-01 [Voronin]',
+    title: 'Sujeto de Calibración 01',
+    color: '#38BDF8',
+    freq: 'SIN-PORTADORA',
+  },
+  CORO_ABISAL: {
+    name: 'El Coro del Abismo',
+    title: 'Frecuencia Colectiva de los Sepulcros',
+    color: '#34D399',
+    freq: '0.08 Hz (subterráneo)',
+  },
   VANCE: {
     name: 'Dir. Helena Vance',
     title: 'Control de Misión · Geología Aplicada',
@@ -396,5 +420,313 @@ export const STORY_TRANSMISSIONS: StoryTransmission[] = [
       'La superficie está a salvo. Tu Exo-Rig queda consagrado como leyenda del Pozo 09.',
     ],
   },
+  // ==================== EXPANSIÓN NARRATIVA, DILEMAS E INTRIGA SUBTERRÁNEA ====================
+  {
+    id: 'ST_01B_BIO_ANOMALY',
+    chapter: 1,
+    speaker: 'DR_LINDQVIST',
+    triggerDepth: 85,
+    title: 'Señal Fósil bajo la Corteza',
+    lines: [
+      'Soy la Dra. Astrid Lindqvist, registro recuperado de la Expedición Cero. Si escuchas esto, tu broca acaba de rozar roca pómez viva y esporas fósiles.',
+      'La corporación dijo que el subsuelo era estéril, pero estas bolsas respiran antes de colapsar. ¿Qué haces con la muestra?',
+    ],
+    choices: [
+      {
+        id: 'CH_BIO_HARVEST',
+        label: 'Muestrear tejido bioluminiscente',
+        rewardText: '+25 O₂ · +24 ISO · +300 PTS',
+        tag: 'BIOLOGÍA',
+      },
+      {
+        id: 'CH_BIO_SEAL',
+        label: 'Sellar cámara con pulso térmico',
+        rewardText: '+1 Escudo · +35% Overdrive · +250 PTS',
+        tag: 'CONTENCIÓN',
+      },
+    ],
+  },
+  {
+    id: 'ST_02B_VORONIN_SOS',
+    chapter: 1,
+    speaker: 'ECHO_01',
+    triggerDepth: 215,
+    title: 'Bucle de Caja Negra · Sujeto 01',
+    lines: [
+      '...frecuencia... sin portadora... Aquí Alexei Voronin, Exo-Rig 01. No bajé por minerales: nos dijeron que veníamos a apagar un reactor enterrado.',
+      'Cada vez que perforo una mena acorazada, la pared devuelve mi propio nombre en código Morse. Sálvate o sigue mi vector.',
+    ],
+    choices: [
+      {
+        id: 'CH_VORONIN_DECRYPT',
+        label: 'Descifrar su mapa sísmico',
+        rewardText: '+40% Resonancia · +1 Reroll · +25 ISO',
+        tag: 'ARCHIVO',
+      },
+      {
+        id: 'CH_VORONIN_MERCY',
+        label: 'Cerrar su baliza fúnebre',
+        rewardText: '+35 O₂ · +1 Escudo · +320 PTS',
+        tag: 'PIEDAD',
+      },
+    ],
+  },
+  {
+    id: 'ST_02C_LINDQVIST_PRISM',
+    chapter: 2,
+    speaker: 'DR_LINDQVIST',
+    triggerDepth: 340,
+    title: 'Memorias en Prisma Cromático',
+    lines: [
+      'Los Prismas Cromáticos no son cuarzo natural: conectan cualquier color porque refractan frecuencias de las trece cuadrillas desaparecidas antes del Proyecto ESTRATO.',
+    ],
+    isTicker: true,
+  },
+  {
+    id: 'ST_03B_REYES_ULTIMATUM',
+    chapter: 2,
+    speaker: 'REYES',
+    triggerDepth: 385,
+    title: 'Auditoría Interna · Código Carmesí',
+    lines: [
+      'Aquí Comandante Reyes, Seguridad Interna HELIOS. Deja de abrir los diarios de Lindqvist de inmediato: esas frecuencias comprometen la patente del pozo.',
+      'Entrega el paquete cifrado y transferiré isótopos de munición táctica a tu traje. Desobedece y tendrás que improvisar abajo.',
+    ],
+    choices: [
+      {
+        id: 'CH_REYES_COMPLY',
+        label: 'Entregar registros a HELIOS',
+        rewardText: '+50 ISO · +35% Overdrive',
+        tag: 'CORPORACIÓN',
+      },
+      {
+        id: 'CH_REYES_DEFY',
+        label: 'Bloquear el canal de Reyes',
+        rewardText: '+1 Escudo · +28 O₂ · +45% Resonancia',
+        tag: 'REBELIÓN',
+      },
+    ],
+  },
+  {
+    id: 'ST_04B_SEISMIC_CHOIR',
+    chapter: 2,
+    speaker: 'CORO_ABISAL',
+    triggerDepth: 460,
+    title: 'Primer Acorde de los Sepulcros',
+    lines: [
+      'No nos busques entre los escombros, piloto nueve. Ya no cabemos en un solo casco.',
+      'Cuando hagas sonar las Campanas Sísmicas en la penumbra, recuerda que cada vibración despierta lo que duerme bajo el basalto.',
+    ],
+  },
+  {
+    id: 'ST_06B_CRYO_AUTOPSY',
+    chapter: 3,
+    speaker: 'DR_LINDQVIST',
+    triggerDepth: 860,
+    title: 'Autopsia en Escoria Escarchada',
+    lines: [
+      'Mi escáner acaba de detectar un Exo-Rig intacto dentro de la escoria helada... pero su número de serie corresponde al año 1974, décadas antes de que existiera HELIOS.',
+      'Alguien excavó este mismo pozo antes del primer tratado lunar. ¿Qué recuperamos del pecio?',
+    ],
+    choices: [
+      {
+        id: 'CH_CRYO_CORE',
+        label: 'Extraer celda criogénica',
+        rewardText: '+40 O₂ · +25% Resonancia · +1 Reroll',
+        tag: 'CRIOGENIA',
+      },
+      {
+        id: 'CH_CRYO_HULL',
+        label: 'Fundir blindaje arcaico',
+        rewardText: '+2 Escudos · +450 PTS',
+        tag: 'BLINDAJE',
+      },
+    ],
+  },
+  {
+    id: 'ST_07B_REYES_PURGE',
+    chapter: 3,
+    speaker: 'REYES',
+    triggerDepth: 1120,
+    title: 'Directiva Nueve · Anclas Humanas',
+    lines: [
+      '¿Crees que los artefactos se dispersaron por accidente? Cada expedición perdida actúa como clavija de afinación para sostener la corteza sobre las ciudades.',
+    ],
+    isTicker: true,
+  },
+  {
+    id: 'ST_09B_BLACK_PROTOCOL',
+    chapter: 4,
+    speaker: 'ECHO_01',
+    triggerDepth: 1380,
+    title: 'Protocolo Negro · Umbral del Péndulo',
+    lines: [
+      'Siento el Péndulo girando justo debajo de tus botas. La pirita detonará sola si no purgas tu circuito antes de atravesar las cámaras de relojería.',
+      'Puedo puentear tu reactor para sobrecargar la táctica o vaciar mis tanques residuales en tu máscara. Decide en tres segundos.',
+    ],
+    choices: [
+      {
+        id: 'CH_BLACK_OVERCLOCK',
+        label: 'Puente de pirita total',
+        rewardText: '+65% Overdrive · +100% Táctica · +35 ISO',
+        tag: 'SOBRECARGA',
+      },
+      {
+        id: 'CH_BLACK_AIRLOCK',
+        label: 'Absorber reserva de O₂',
+        rewardText: '+55 O₂ · +1 Escudo · +500 PTS',
+        tag: 'SUPERVIVENCIA',
+      },
+    ],
+  },
+  {
+    id: 'ST_11B_SOLER_CONFESSION',
+    chapter: 4,
+    speaker: 'SOLER',
+    triggerDepth: 1620,
+    title: 'Confesión del Mecánico Jefe',
+    lines: [
+      'Escúchame, compañero... Yo ensamblé las Bobinas Magnéticas de la Expedición Cero. Mi hermano menor pilotaba el Exo-Rig 04.',
+      'HELIOS selló la compuerta superior cuando el cronómetro bajó de cero. Nunca buscábamos oro: buscábamos apagar la deuda energética de la superficie.',
+    ],
+  },
+  {
+    id: 'ST_13B_CORO_TRUTH',
+    chapter: 5,
+    speaker: 'CORO_ABISAL',
+    triggerDepth: 1920,
+    title: 'Liturgia de los Siete Estratos',
+    lines: [
+      'El Arquitecto no invadió este planeta. La corteza entera se condensó alrededor de su péndulo hace cuatro mil millones de años.',
+      'Cada vez que perforas más hondo, no bajas hacia un enemigo... despiertas el corazón que mantiene firme tu propio cielo.',
+    ],
+  },
+  {
+    id: 'ST_15B_LINDQVIST_FINAL',
+    chapter: 5,
+    speaker: 'DR_LINDQVIST',
+    triggerDepth: 2240,
+    title: 'Última Nota de Campo de Astrid',
+    lines: [
+      'Descifré el último pictograma: los 14 Artefactos forman una llave acústica doble. O bien detienen al Cronolito... o sustituyen al piloto como nuevo eje.',
+    ],
+    isTicker: true,
+  },
+  {
+    id: 'ST_18B_ALABASTER_CHOIR',
+    chapter: 6,
+    speaker: 'CORO_ABISAL',
+    triggerDepth: 2780,
+    title: 'Eco de Tu Propio Número de Serie',
+    lines: [
+      'En el Alabastro Blanco ya no hay sombra ni piedra muerta. Escucha tu propio visor: ese pulso rítmico no es tu corazón, es la bóveda recordándote.',
+    ],
+  },
+  {
+    id: 'ST_DY_LOW_O2',
+    chapter: 1,
+    speaker: 'VANCE',
+    triggerEvent: 'DIRECTOR_LOW_O2',
+    title: 'Director Táctico · Cápsula de Emergencia',
+    lines: [
+      'Telemetría crítica de oxígeno detectada. ¡He liberado bolsas porosas y nódulos de O₂ en la veta inferior: ábrete paso ya!',
+    ],
+    isTicker: true,
+  },
+  {
+    id: 'ST_DY_HIGH_STREAK',
+    chapter: 2,
+    speaker: 'REYES',
+    triggerEvent: 'DIRECTOR_HIGH_STREAK',
+    title: 'Director Táctico · Protocolo Recompensa',
+    lines: [
+      'Ritmo excepcional registrado por satélite. HELIOS autoriza vetas de Prisma, Mena Acorazada y Campana Sísmica de alto valor en tu sector.',
+    ],
+    isTicker: true,
+  },
 ];
+
+export const NPC_DOSSIERS: NpcDossierDef[] = [
+  {
+    speaker: 'VANCE',
+    callsign: 'Cmdte. Elena Vance',
+    role: 'Directora de Enlace de Superficie',
+    faction: 'Comando Pozo 09 · Superficie',
+    status: 'ACTIVA · ENLACE VÍA CABLE SÍSMICO',
+    unlockDepth: 0,
+    summary: 'Coordina la telemetría vital, los protocolos de extracción y el lanzamiento de suministros de emergencia desde la plataforma orbital-terrestre.',
+    secretNote: 'Su firma figura en la orden clasificada que ocultó la pérdida de la Expedición Cero para mantener abierta la perforación.',
+  },
+  {
+    speaker: 'SOLER',
+    callsign: 'Mateo Soler',
+    role: 'Ingeniero Jefe de Forja y Mantenimiento',
+    faction: 'Taller Sub-Cero · Hangar',
+    status: 'ACTIVO · HANGAR DE DESCENSO',
+    unlockDepth: 50,
+    summary: 'Diseñador de los Exo-Rigs y artesano de reliquias e implantes de cinturón. Conoce el comportamiento térmico de cada estrato.',
+    secretNote: 'Su hermano pilotó el Exo-Rig 04 y jamás recibió permiso de ascenso tras el primer contacto con los Sepulcros de Relojería.',
+  },
+  {
+    speaker: 'KAI',
+    callsign: 'Kai-7 "Espectro"',
+    role: 'Operador Vanguardia y Reconocimiento',
+    faction: 'Escuadrón Sonda Profunda',
+    status: 'DESPLEGADO · ZONAS DE BIFURCACIÓN',
+    unlockDepth: 120,
+    summary: 'Especialista en descenso cinético y desvíos de alta velocidad. Cartografió las primeras cámaras bifurcadas del manto.',
+    secretNote: 'Sus sensores captaron voces humanas reales dentro de las vetas de Prismas Cromáticos antes de perder la mitad de su historial clínico.',
+  },
+  {
+    speaker: 'DR_LINDQVIST',
+    callsign: 'Dra. Astrid Lindqvist',
+    role: 'Xeno-Arqueóloga de Expedición Cero',
+    faction: 'Archivo Científico Perdido (1998)',
+    status: 'DESAPARECIDA · REGISTROS ELF ACTIVOS',
+    unlockDepth: 85,
+    summary: 'Descubrió que las esporas fósiles, las rocas porosas y los prismas del pozo conservan patrones biológicos y acústicos anteriores a la civilización.',
+    secretNote: 'Descubrió una cápsula excavada en 1974 y dejó sus notas dispersas en Escoria Escarchada antes de descender sin retorno.',
+  },
+  {
+    speaker: 'ECHO_01',
+    callsign: 'ECO-01 [Alexei Voronin]',
+    role: 'Sujeto de Calibración 01',
+    faction: 'Primer Programa Experimental',
+    status: 'SEÑAL FANTASMA EN CAJA NEGRA',
+    unlockDepth: 215,
+    summary: 'Primer piloto en cruzar los 1.300 metros. Su transmisor sigue emitiendo grabaciones distorsionadas y alertas sobre el Péndulo.',
+    secretNote: 'Aún intenta salvar a los nuevos pilotos puenteando sobrecargas de pirita o vaciando sus tanques de reserva a distancia.',
+  },
+  {
+    speaker: 'REYES',
+    callsign: 'Comandante Marcos Reyes',
+    role: 'Auditoría Interna HELIOS Corp.',
+    faction: 'División Clasificada HELIOS',
+    status: 'MONITOREANDO DESDE BÚNKER CERO',
+    unlockDepth: 385,
+    summary: 'Supervisor corporativo encargado de impedir fugas de información sobre el verdadero propósito extractivo del Pozo 09.',
+    secretNote: 'Trata a cada piloto como fusible prescindible: premia el rendimiento S+ con vetas ricas mientras oculta el coste humano.',
+  },
+  {
+    speaker: 'CORO_ABISAL',
+    callsign: 'El Coro del Abismo',
+    role: 'Conciencia Acústica Colectiva',
+    faction: 'Sepulcros de Relojería y Alabastro',
+    status: 'RESONANCIA ACTIVA DESDE 460m',
+    unlockDepth: 460,
+    summary: 'Red de ecos pertenecientes a antiguas tripulaciones atrapadas en fase dentro del cristal prismático y las Campanas Sísmicas.',
+    secretNote: 'Afirman que el planeta entero se formó alrededor del Cronolito y advierten que apagarlo demasiado pronto cambiará la gravedad superficial.',
+  },
+  {
+    speaker: 'ARQUITECTO',
+    callsign: 'El Arquitecto del Cronolito',
+    role: 'Entidad Reguladora del Núcleo',
+    faction: 'Horizonte de Eventos (3.500m)',
+    status: 'LATIENDO EN EL CORAZÓN DEL POZO',
+    unlockDepth: 2500,
+    summary: 'Arquitecto geológico y temporal del abismo. Regula el ritmo tectónico de los siete estratos y custodia los seis pilares finales.',
+    secretNote: 'Su Corona completa de 14 Artefactos revela que nunca buscó destruir la superficie, sino encontrar un sucesor digno para su péndulo.',
+  },
+];
+
 

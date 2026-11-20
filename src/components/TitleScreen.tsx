@@ -404,14 +404,30 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 );
               })}
             </div>
-            <div className="pixel-panel px-3 py-2 bg-[#111218] flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="min-w-0">
-                <span className="font-pixel text-[9px] mr-2" style={{ color: activeChassis.accentColor }}>
-                  {activeChassis.traitTitle}:
-                </span>
-                <span className="text-[#D4D4D8]">{activeChassis.traitDesc}</span>
+            <div className="pixel-panel px-3 py-2.5 bg-[#111218] space-y-1.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="font-pixel text-[9px] mr-2" style={{ color: activeChassis.accentColor }}>
+                    {activeChassis.traitTitle}:
+                  </span>
+                  <span className="text-[#D4D4D8]">{activeChassis.traitDesc}</span>
+                </div>
+                <span className="font-mono text-[10px] text-[#8E92A4] shrink-0">{activeChassis.stats}</span>
               </div>
-              <span className="font-mono text-[10px] text-[#8E92A4] shrink-0">{activeChassis.stats}</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5 border-t border-[#232530] text-[11px]">
+                <div className="text-[#BAE6FD]">
+                  <span className="font-pixel text-[9px] mr-1.5" style={{ color: activeChassis.accentColor }}>
+                    ✦ {activeChassis.signatureName || 'Resonancia'} [F]:
+                  </span>
+                  <span>{activeChassis.signatureDesc}</span>
+                </div>
+                <div className="text-[#BEF264]">
+                  <span className="font-pixel text-[9px] text-[#A3E635] mr-1.5">
+                    ◈ {activeChassis.tacticalName || 'Táctica'} [G]:
+                  </span>
+                  <span>{activeChassis.tacticalDesc}</span>
+                </div>
+              </div>
             </div>
           </div>
 

@@ -788,6 +788,84 @@ export class FxWorld {
             1.3,
             18
           );
+        } else if (cell.kind === 'PRISM_CORE' && Math.random() < 0.14) {
+          const prismCols = ['#F43F5E', '#38BDF8', '#FACC15', '#4ADE80'];
+          this.spawnCellularPixel(
+            cc + 0.15 + Math.random() * 0.7,
+            rr + 0.15 + Math.random() * 0.7,
+            (Math.random() - 0.5) * 0.014,
+            -0.02,
+            'SPARK',
+            prismCols[Math.floor(Math.random() * prismCols.length)],
+            1.3,
+            20
+          );
+        } else if (cell.kind === 'PYRITE_CHARGE' && Math.random() < 0.11) {
+          this.spawnCellularPixel(
+            cc + 0.2 + Math.random() * 0.6,
+            rr + 0.2 + Math.random() * 0.6,
+            (Math.random() - 0.5) * 0.015,
+            -0.025,
+            'EMBER',
+            Math.random() < 0.5 ? '#F97316' : '#FDE047',
+            1.4,
+            18
+          );
+        } else if (cell.kind === 'MAGNET_COIL' && Math.random() < 0.1) {
+          this.spawnCellularPixel(
+            cc + 0.2 + Math.random() * 0.6,
+            rr + 0.2 + Math.random() * 0.6,
+            (Math.random() - 0.5) * 0.02,
+            -0.016,
+            'SPARK',
+            '#38BDF8',
+            1.2,
+            18
+          );
+        } else if (cell.kind === 'CRYO_SLAG' && Math.random() < 0.1) {
+          this.spawnCellularPixel(
+            cc + 0.15 + Math.random() * 0.7,
+            rr + 0.2 + Math.random() * 0.6,
+            (Math.random() - 0.5) * 0.012,
+            0.015,
+            'CRYO',
+            '#A5F3FC',
+            1.4,
+            20
+          );
+        } else if (cell.kind === 'SEISMIC_BELL' && Math.random() < 0.08) {
+          this.spawnCellularPixel(
+            cc + 0.2 + Math.random() * 0.6,
+            rr + 0.2 + Math.random() * 0.6,
+            (Math.random() - 0.5) * 0.024,
+            -0.012,
+            'SPARK',
+            '#FBBF24',
+            1.3,
+            16
+          );
+        } else if (cell.kind === 'BIO_SPORE' && Math.random() < 0.12) {
+          this.spawnCellularPixel(
+            cc + 0.2 + Math.random() * 0.6,
+            rr + 0.2 + Math.random() * 0.6,
+            (Math.random() - 0.5) * 0.01,
+            -0.024,
+            'ACID',
+            '#4ADE80',
+            1.4,
+            22
+          );
+        } else if (cell.kind === 'POROUS_SPONGE' && Math.random() < 0.05) {
+          this.spawnCellularPixel(
+            cc + 0.2 + Math.random() * 0.6,
+            rr + 0.2 + Math.random() * 0.6,
+            0,
+            -0.018,
+            'CRYO',
+            '#BAE6FD',
+            1.1,
+            16
+          );
         }
       }
     }

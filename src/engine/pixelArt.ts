@@ -1925,6 +1925,415 @@ export function getExtractionTubeSprite(animFrame = 0): HTMLCanvasElement {
   return setCached(key, canvas);
 }
 
+// ==================== 8 NEW TACTICAL & BASIC VARIANT BLOCK SPRITES ====================
+
+export function getHeavyOreBlockSprite(baseColor: string, crackStage = 0, animPhase = 0): HTMLCanvasElement {
+  const safeCrack = Math.max(0, Math.min(3, Math.floor(crackStage)));
+  const phase = Math.abs(Math.floor(animPhase)) % 2;
+  const key = `heavy_ore_${baseColor}_${safeCrack}_${phase}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const [canvas, ctx] = createPixelCanvas();
+  const ramp = buildHueShiftedRamp(baseColor);
+
+  // Dark steel armor chassis around colored ore core
+  ctx.fillStyle = '#0B0F19';
+  ctx.fillRect(0, 0, TILE_PX, TILE_PX);
+  ctx.fillStyle = '#1E293B';
+  ctx.fillRect(1, 1, 22, 22);
+  ctx.fillStyle = '#475569';
+  ctx.fillRect(1, 1, 22, 2);
+  ctx.fillRect(1, 1, 2, 22);
+  ctx.fillStyle = '#0F172A';
+  ctx.fillRect(1, 21, 22, 2);
+  ctx.fillRect(21, 1, 2, 22);
+
+  // Inner faceted colored mineral core with Bayer dithering
+  for (let y = 4; y < 20; y++) {
+    for (let x = 4; x < 20; x++) {
+      const diag = x - 4 + (y - 4);
+      const b = bayerAt(x, y);
+      let tone = diag < 9 ? ramp.light : diag < 21 ? ramp.mid : ramp.dark;
+      if (b > 0.22 && diag < 14) tone = ramp.specular;
+      else if (b < -0.24 && diag > 16) tone = ramp.outline;
+      ctx.fillStyle = tone;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Facet glint & armor straps
+  ctx.fillStyle = ramp.specular;
+  ctx.fillRect(6, 5, 4, 2);
+  ctx.fillRect(6, 7, 2, 2);
+  if (phase === 1) ctx.fillRect(15, 14, 2, 2);
+
+  // Heavy steel X-brace corners & rivets
+  ctx.fillStyle = '#64748B';
+  ctx.fillRect(2, 2, 3, 3);
+  ctx.fillRect(19, 2, 3, 3);
+  ctx.fillRect(2, 19, 3, 3);
+  ctx.fillRect(19, 19, 3, 3);
+  ctx.fillStyle = '#CBD5E1';
+  ctx.fillRect(2, 2, 1, 1);
+  ctx.fillRect(19, 2, 1, 1);
+  ctx.fillRect(2, 19, 1, 1);
+  ctx.fillRect(19, 19, 1, 1);
+
+  if (safeCrack > 0) {
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(11, 4, 2, 4);
+    ctx.fillRect(9, 8, 3, 2);
+    if (safeCrack >= 2) {
+      ctx.fillRect(8, 10, 2, 5);
+      ctx.fillRect(13, 12, 5, 2);
+      ctx.fillStyle = ramp.specular;
+      ctx.fillRect(12, 5, 1, 3);
+    }
+    if (safeCrack >= 3) {
+      ctx.fillStyle = '#FEF08A';
+      ctx.fillRect(10, 10, 4, 4);
+    }
+  }
+
+  return setCached(key, canvas);
+}
+
+export function getPrismCoreBlockSprite(animPhase = 0): HTMLCanvasElement {
+  const phase = Math.abs(Math.floor(animPhase)) % 4;
+  const key = `prism_core_${phase}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const [canvas, ctx] = createPixelCanvas();
+  const spectral = ['#F43F5E', '#38BDF8', '#FACC15', '#4ADE80'];
+  const c0 = spectral[phase];
+  const c1 = spectral[(phase + 1) % 4];
+  const c2 = spectral[(phase + 2) % 4];
+  const c3 = spectral[(phase + 3) % 4];
+
+  ctx.fillStyle = '#090912';
+  ctx.fillRect(0, 0, TILE_PX, TILE_PX);
+  ctx.fillStyle = '#1E1B4B';
+  ctx.fillRect(1, 1, 22, 22);
+  ctx.fillStyle = '#312E81';
+  ctx.fillRect(2, 2, 20, 2);
+  ctx.fillRect(2, 2, 2, 20);
+
+  // Refracting crystal diamond facets
+  for (let y = 3; y < 21; y++) {
+    for (let x = 3; x < 21; x++) {
+      const dx = x - 11.5;
+      const dy = y - 11.5;
+      const dist = Math.abs(dx) + Math.abs(dy);
+      if (dist <= 8.5) {
+        if (dx < 0 && dy < 0) ctx.fillStyle = c0;
+        else if (dx >= 0 && dy < 0) ctx.fillStyle = c1;
+        else if (dx < 0 && dy >= 0) ctx.fillStyle = c2;
+        else ctx.fillStyle = c3;
+        if (bayerAt(x, y) > 0.25 && dist < 5.5) ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(x, y, 1, 1);
+      } else if (dist <= 10) {
+        ctx.fillStyle = '#0F172A';
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+
+  // White prism star center
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(11, 7, 2, 10);
+  ctx.fillRect(7, 11, 10, 2);
+  ctx.fillStyle = '#F8FAFC';
+  ctx.fillRect(10, 10, 4, 4);
+
+  return setCached(key, canvas);
+}
+
+export function getPyriteChargeBlockSprite(animPhase = 0): HTMLCanvasElement {
+  const phase = Math.abs(Math.floor(animPhase)) % 2;
+  const key = `pyrite_charge_${phase}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const [canvas, ctx] = createPixelCanvas();
+  const ramp = buildHueShiftedRamp('#D97706');
+
+  ctx.fillStyle = '#180B05';
+  ctx.fillRect(0, 0, TILE_PX, TILE_PX);
+  ctx.fillStyle = '#29150A';
+  ctx.fillRect(1, 1, 22, 22);
+
+  // Interlocking metallic golden-brass pyrite cubes
+  const drawCube = (ox: number, oy: number, w: number, h: number) => {
+    ctx.fillStyle = ramp.dark;
+    ctx.fillRect(ox, oy, w, h);
+    ctx.fillStyle = ramp.mid;
+    ctx.fillRect(ox + 1, oy + 1, w - 2, h - 2);
+    ctx.fillStyle = ramp.light;
+    ctx.fillRect(ox + 1, oy + 1, w - 3, 2);
+    ctx.fillRect(ox + 1, oy + 1, 2, h - 3);
+    ctx.fillStyle = '#FEF08A';
+    ctx.fillRect(ox + 1, oy + 1, 2, 2);
+  };
+  drawCube(3, 3, 9, 9);
+  drawCube(12, 4, 8, 8);
+  drawCube(4, 12, 8, 8);
+  drawCube(11, 11, 10, 10);
+
+  // Pulsing red-orange sulfur ignition core
+  ctx.fillStyle = phase === 0 ? '#EF4444' : '#FB923C';
+  ctx.fillRect(9, 9, 6, 6);
+  ctx.fillStyle = '#FDE047';
+  ctx.fillRect(10, 10, 4, 4);
+  if (phase === 1) {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(11, 11, 2, 2);
+    ctx.fillStyle = '#F97316';
+    ctx.fillRect(11, 4, 2, 2);
+    ctx.fillRect(11, 18, 2, 2);
+    ctx.fillRect(4, 11, 2, 2);
+    ctx.fillRect(18, 11, 2, 2);
+  }
+
+  return setCached(key, canvas);
+}
+
+export function getPorousSpongeBlockSprite(baseColor: string, animPhase = 0): HTMLCanvasElement {
+  const phase = Math.abs(Math.floor(animPhase)) % 2;
+  const key = `porous_sponge_${baseColor}_${phase}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const [canvas, ctx] = createPixelCanvas();
+  const ramp = buildHueShiftedRamp(baseColor);
+
+  ctx.fillStyle = ramp.outline;
+  ctx.fillRect(0, 0, TILE_PX, TILE_PX);
+
+  // Soft volcanic pumice body
+  for (let y = 1; y < 23; y++) {
+    for (let x = 1; x < 23; x++) {
+      const n = hash2D(x, y, 71);
+      const b = bayerAt(x, y);
+      let col = ramp.mid;
+      if (y <= 3 || x <= 3) col = ramp.light;
+      else if (y >= 20 || x >= 20) col = ramp.dark;
+      else if (b > 0.15 && n > 0.45) col = ramp.light;
+      else if (b < -0.15 && n < 0.55) col = ramp.dark;
+      ctx.fillStyle = col;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Carved vesicular pores & trapped O2 micro-pockets
+  const pores: [number, number, number][] = [
+    [5, 5, 3],
+    [13, 4, 2],
+    [16, 10, 3],
+    [7, 13, 4],
+    [15, 16, 3],
+    [4, 18, 2],
+  ];
+  for (let i = 0; i < pores.length; i++) {
+    const [px, py, size] = pores[i];
+    ctx.fillStyle = ramp.outline;
+    ctx.fillRect(px, py, size, size);
+    ctx.fillStyle = ramp.specular;
+    ctx.fillRect(px, py + size, size, 1);
+    if ((i + phase) % 2 === 0) {
+      ctx.fillStyle = '#67E8F9';
+      ctx.fillRect(px + 1, py + 1, 1, 1);
+    }
+  }
+
+  return setCached(key, canvas);
+}
+
+export function getMagnetCoilBlockSprite(animPhase = 0): HTMLCanvasElement {
+  const phase = Math.abs(Math.floor(animPhase)) % 3;
+  const key = `magnet_coil_${phase}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const [canvas, ctx] = createPixelCanvas();
+  ctx.fillStyle = '#0A101D';
+  ctx.fillRect(0, 0, TILE_PX, TILE_PX);
+  ctx.fillStyle = '#1E293B';
+  ctx.fillRect(1, 1, 22, 22);
+  ctx.fillStyle = '#475569';
+  ctx.fillRect(2, 2, 20, 2);
+  ctx.fillRect(2, 20, 20, 2);
+
+  // Iron magnet poles (North red / South cyan) + copper coil windings
+  ctx.fillStyle = '#DC2626';
+  ctx.fillRect(3, 5, 4, 14);
+  ctx.fillStyle = '#F87171';
+  ctx.fillRect(3, 6, 2, 10);
+
+  ctx.fillStyle = '#0284C7';
+  ctx.fillRect(17, 5, 4, 14);
+  ctx.fillStyle = '#38BDF8';
+  ctx.fillRect(17, 6, 2, 10);
+
+  // Copper solenoid windings
+  for (let x = 7; x <= 16; x += 2) {
+    ctx.fillStyle = x % 4 === 1 ? '#F59E0B' : '#B45309';
+    ctx.fillRect(x, 6, 2, 12);
+    ctx.fillStyle = '#FDE68A';
+    ctx.fillRect(x, 7, 1, 3);
+  }
+
+  // Animated magnetic flux arcs
+  ctx.fillStyle = '#E0F2FE';
+  if (phase === 0) {
+    ctx.fillRect(8, 3, 8, 1);
+    ctx.fillRect(9, 20, 6, 1);
+  } else if (phase === 1) {
+    ctx.fillRect(6, 2, 12, 1);
+    ctx.fillStyle = '#38BDF8';
+    ctx.fillRect(11, 11, 2, 2);
+  } else {
+    ctx.fillRect(5, 4, 2, 1);
+    ctx.fillRect(17, 4, 2, 1);
+    ctx.fillRect(10, 21, 4, 1);
+  }
+
+  return setCached(key, canvas);
+}
+
+export function getCryoSlagBlockSprite(crackStage = 0, animPhase = 0): HTMLCanvasElement {
+  const safeCrack = Math.max(0, Math.min(2, Math.floor(crackStage)));
+  const phase = Math.abs(Math.floor(animPhase)) % 2;
+  const key = `cryo_slag_${safeCrack}_${phase}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const [canvas, ctx] = createPixelCanvas();
+  const iceRamp = buildHueShiftedRamp('#22D3EE');
+
+  ctx.fillStyle = '#082F49';
+  ctx.fillRect(0, 0, TILE_PX, TILE_PX);
+
+  for (let y = 1; y < 23; y++) {
+    for (let x = 1; x < 23; x++) {
+      const slagSpot = ((x * 3 + y * 5) % 17 < 4) && x > 3 && x < 20 && y > 3 && y < 20;
+      if (slagSpot) {
+        ctx.fillStyle = '#1E293B';
+      } else {
+        const b = bayerAt(x, y);
+        ctx.fillStyle = y + x < 18 ? iceRamp.light : b > 0.15 ? iceRamp.mid : iceRamp.dark;
+      }
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Razor frost spikes & crystal rim
+  ctx.fillStyle = '#ECFEFF';
+  ctx.fillRect(2, 2, 8, 2);
+  ctx.fillRect(2, 2, 2, 9);
+  ctx.fillRect(14, 5, 4, 2);
+  ctx.fillRect(7, 15, 5, 2);
+  if (phase === 1) {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(5, 6, 2, 2);
+    ctx.fillRect(17, 13, 2, 2);
+  }
+
+  if (safeCrack > 0) {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(11, 2, 1, 8);
+    ctx.fillRect(8, 10, 5, 1);
+    if (safeCrack >= 2) {
+      ctx.fillRect(13, 10, 2, 9);
+    }
+  }
+
+  return setCached(key, canvas);
+}
+
+export function getSeismicBellBlockSprite(animPhase = 0): HTMLCanvasElement {
+  const phase = Math.abs(Math.floor(animPhase)) % 3;
+  const key = `seismic_bell_${phase}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const [canvas, ctx] = createPixelCanvas();
+  ctx.fillStyle = '#120E0A';
+  ctx.fillRect(0, 0, TILE_PX, TILE_PX);
+  ctx.fillStyle = '#261C12';
+  ctx.fillRect(1, 1, 22, 22);
+  // Stone acoustic chamber niche
+  ctx.fillStyle = '#0B0907';
+  ctx.fillRect(4, 3, 16, 18);
+
+  // Bronze resonator bell dome
+  ctx.fillStyle = '#78350F';
+  ctx.fillRect(8, 5, 8, 2);
+  ctx.fillRect(7, 7, 10, 6);
+  ctx.fillRect(5, 13, 14, 4);
+  ctx.fillStyle = '#D97706';
+  ctx.fillRect(8, 6, 7, 6);
+  ctx.fillRect(6, 13, 11, 3);
+  ctx.fillStyle = '#FACC15';
+  ctx.fillRect(9, 7, 3, 5);
+  ctx.fillRect(7, 13, 4, 2);
+  ctx.fillStyle = '#FEF08A';
+  ctx.fillRect(9, 7, 1, 4);
+
+  // Striker clapper & sonic waves
+  ctx.fillStyle = '#F59E0B';
+  ctx.fillRect(11, 17, 2, 3);
+  ctx.fillStyle = phase === 0 ? '#38BDF8' : phase === 1 ? '#FDE047' : '#FFFFFF';
+  if (phase > 0) {
+    ctx.fillRect(2, 8, 1, 8);
+    ctx.fillRect(21, 8, 1, 8);
+  }
+  if (phase === 2) {
+    ctx.fillRect(0, 10, 1, 4);
+    ctx.fillRect(23, 10, 1, 4);
+  }
+
+  return setCached(key, canvas);
+}
+
+export function getBioSporeBlockSprite(animPhase = 0): HTMLCanvasElement {
+  const phase = Math.abs(Math.floor(animPhase)) % 3;
+  const key = `bio_spore_${phase}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const [canvas, ctx] = createPixelCanvas();
+  ctx.fillStyle = '#051B14';
+  ctx.fillRect(0, 0, TILE_PX, TILE_PX);
+  ctx.fillStyle = '#0B2F22';
+  ctx.fillRect(1, 1, 22, 22);
+  ctx.fillStyle = '#134E4A';
+  ctx.fillRect(2, 16, 20, 6);
+
+  // Bioluminescent spore clusters
+  const drawPod = (cx: number, cy: number, r: number, bright: boolean) => {
+    ctx.fillStyle = '#047857';
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.fillStyle = bright ? '#4ADE80' : '#10B981';
+    ctx.fillRect(cx - r + 1, cy - r + 1, r * 2 - 2, r * 2 - 2);
+    ctx.fillStyle = bright ? '#DCFCE7' : '#A7F3D0';
+    ctx.fillRect(cx - 1, cy - 1, 2, 2);
+  };
+  drawPod(8, 12, 4, phase === 0);
+  drawPod(16, 13, 3, phase === 1);
+  drawPod(12, 8, 3, phase === 2);
+
+  // Rising glowing pollen motes
+  ctx.fillStyle = '#86EFAC';
+  ctx.fillRect(6, 4 + phase, 1, 1);
+  ctx.fillRect(17, 5 - (phase % 2), 1, 1);
+  ctx.fillStyle = '#ECFDF5';
+  ctx.fillRect(12, 3 + ((phase + 1) % 3), 2, 1);
+
+  return setCached(key, canvas);
+}
+
 // ==================== BESPOKE PIXEL-ART BOSS SPRITES ====================
 
 export function getLoomAnchorSprite(animFrame = 0, hitFlash = false): HTMLCanvasElement {
@@ -2142,7 +2551,94 @@ export function getCharacterPortraitSprite(speaker: StorySpeaker, animFrame = 0)
   ctx.fillStyle = accent;
   ctx.fillRect(5, 17, 14, 2);
 
-  if (speaker === 'ARQUITECTO') {
+  if (speaker === 'DR_LINDQVIST') {
+    ctx.fillStyle = '#18102A';
+    ctx.fillRect(0, 0, 24, 24);
+    ctx.fillStyle = '#312E81';
+    ctx.fillRect(1, 1, 22, 2);
+    // Lab parka & Arctic visor goggles (Dra. Astrid Lindqvist)
+    ctx.fillStyle = '#4C1D95';
+    ctx.fillRect(5, 17, 14, 7);
+    ctx.fillStyle = '#DDD6FE';
+    ctx.fillRect(7, 18, 10, 5);
+    ctx.fillStyle = '#1E1B4B';
+    ctx.fillRect(7, 6, 10, 11);
+    ctx.fillStyle = '#F59E0B';
+    ctx.fillRect(6, 5, 12, 3);
+    ctx.fillStyle = '#FDE68A';
+    ctx.fillRect(8, 12, 8, 5);
+    // Cyan research lens visor
+    ctx.fillStyle = '#38BDF8';
+    ctx.fillRect(8, 9, 8, 3);
+    ctx.fillStyle = '#E0F2FE';
+    ctx.fillRect(9 + (f % 2), 9, 3, 2);
+    ctx.fillStyle = '#A78BFA';
+    ctx.fillRect(15, 12, 2, 3);
+  } else if (speaker === 'REYES') {
+    ctx.fillStyle = '#240812';
+    ctx.fillRect(0, 0, 24, 24);
+    ctx.fillStyle = '#881337';
+    ctx.fillRect(1, 1, 22, 2);
+    // HELIOS crimson tactical peaked cap & cold crimson tactical eye-piece
+    ctx.fillStyle = '#4C0519';
+    ctx.fillRect(4, 17, 16, 7);
+    ctx.fillStyle = '#FB7185';
+    ctx.fillRect(6, 17, 2, 6);
+    ctx.fillRect(16, 17, 2, 6);
+    ctx.fillStyle = '#1F2937';
+    ctx.fillRect(7, 5, 10, 3);
+    ctx.fillStyle = '#E11D48';
+    ctx.fillRect(6, 7, 12, 2);
+    ctx.fillStyle = '#D6B49B';
+    ctx.fillRect(8, 9, 8, 8);
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(9, 11, 6, 2);
+    ctx.fillStyle = f === 0 ? '#FB7185' : '#FFFFFF';
+    ctx.fillRect(13, 11, 2, 2);
+    ctx.fillStyle = '#9F1239';
+    ctx.fillRect(10, 15, 4, 1);
+  } else if (speaker === 'ECHO_01') {
+    ctx.fillStyle = '#051524';
+    ctx.fillRect(0, 0, 24, 24);
+    // Cracked vintage 1974/Subject-01 dome helmet with static scanlines
+    ctx.fillStyle = '#0C4A6E';
+    ctx.fillRect(5, 17, 14, 7);
+    ctx.fillStyle = '#1E293B';
+    ctx.fillRect(6, 5, 12, 12);
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(7, 4, 10, 2);
+    ctx.fillStyle = '#075985';
+    ctx.fillRect(8, 7, 8, 8);
+    ctx.fillStyle = '#7DD3FC';
+    ctx.fillRect(9, 9 + (f % 2), 6, 1);
+    ctx.fillRect(10, 12, 4, 1);
+    // Diagonal visor crack
+    ctx.fillStyle = '#FDE047';
+    ctx.fillRect(13, 7, 1, 2);
+    ctx.fillRect(12, 9, 1, 2);
+    if (f === 1) {
+      ctx.fillStyle = '#38BDF8';
+      ctx.fillRect(2, 11, 20, 1);
+    }
+  } else if (speaker === 'CORO_ABISAL') {
+    ctx.fillStyle = '#041C16';
+    ctx.fillRect(0, 0, 24, 24);
+    // Triad of spectral crystalline masks resonating in abyssal green
+    const drawMask = (mx: number, my: number, col: string) => {
+      ctx.fillStyle = '#064E3B';
+      ctx.fillRect(mx - 1, my - 1, 7, 8);
+      ctx.fillStyle = col;
+      ctx.fillRect(mx, my, 5, 6);
+      ctx.fillStyle = '#022C22';
+      ctx.fillRect(mx + 1, my + 2, 1, 1);
+      ctx.fillRect(mx + 3, my + 2, 1, 1);
+    };
+    drawMask(3, 9 + (f % 2), '#10B981');
+    drawMask(16, 9 + ((f + 1) % 2), '#10B981');
+    drawMask(10, 5, f === 1 ? '#6EE7B7' : '#34D399');
+    ctx.fillStyle = '#A7F3D0';
+    ctx.fillRect(12, 11, 1, 4);
+  } else if (speaker === 'ARQUITECTO') {
     // Enigmatic floating obsidian diamond monolith + glowing pulse eye
     ctx.fillStyle = '#09090B';
     ctx.fillRect(7, 3, 10, 12);
